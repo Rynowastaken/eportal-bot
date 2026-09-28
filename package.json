@@ -1,13 +1,15 @@
 {
   "name": "eportal-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Automate NUTC ePortal to AIS SSO with Playwright.",
+  "description": "Personal NUTC dashboard and ePortal SSO launcher powered by Playwright.",
   "scripts": {
+    "start": "node server.js",
     "login": "node eportal_bot.js login",
     "run": "node eportal_bot.js run",
-    "run:headed": "node eportal_bot.js run --headed"
+    "run:headed": "node eportal_bot.js run --headed",
+    "check": "node --check server.js && node --check eportal_bot.js && node --check src/eportal.js && node --check public/app.js"
   },
   "engines": {
     "node": ">=18"
