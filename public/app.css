@@ -637,3 +637,16 @@ footer {
 .status-dot.idle {
   background: rgba(247, 241, 246, 0.32);
 }
+
+
+.inline-link {
+  display: inline-block;
+  margin-left: 0.2rem;
+  color: var(--primary);
+  font-weight: 720;
+  text-underline-offset: 0.18em;
+}
+
+.inline-link:hover {
+  color: #f6b7d3;
+}
