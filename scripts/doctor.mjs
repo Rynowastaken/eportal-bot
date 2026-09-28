@@ -14,7 +14,9 @@ const required = [
   "scripts/portal-status.mjs",
   "scripts/portal-run.mjs",
   "public/index.html",
+  "public/student.html",
   "public/app.js",
+  "public/student.js",
   "public/app.css",
   "public/userscript/nutc-portal.user.js",
 ];
