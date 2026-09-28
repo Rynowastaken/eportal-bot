@@ -98,10 +98,13 @@ function inspectRuntime() {
 
   const externalNoVnc = Boolean(String(env.PORTAL_NOVNC_TARGET || "").trim());
   const noVncWeb = firstNoVncRoot();
-  const hasDisplay = Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
+  const hasX11Display = Boolean(env.DISPLAY);
+  const hasGraphicalDisplay = Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
   const linuxCanCreateDisplay = platform === "linux" && commands.Xvfb;
-  const linuxCanCreateNoVnc =
+  const linuxHasNoVncTools =
     platform === "linux" && commands.x11vnc && commands.websockify && Boolean(noVncWeb);
+  const linuxCanCreateNoVnc =
+    linuxHasNoVncTools && (hasX11Display || linuxCanCreateDisplay);
 
   let loginMode = requestedMode;
   if (requestedMode === "auto") {
@@ -115,10 +118,22 @@ function inspectRuntime() {
     );
   }
 
-  if (platform === "linux" && !hasDisplay && !linuxCanCreateDisplay) {
+  if (platform === "linux" && loginMode === "novnc" && !externalNoVnc && !hasX11Display && !linuxCanCreateDisplay) {
     errors.push(
-      "No graphical display was detected and Xvfb is unavailable. Provide DISPLAY/WAYLAND_DISPLAY or install an X virtual display.",
+      "Embedded noVNC on Linux needs an X11 display. Provide DISPLAY or install an X virtual display such as Xvfb.",
     );
+  }
+
+  if (platform === "linux" && loginMode === "host" && !hasGraphicalDisplay) {
+    if (requestedMode === "auto") {
+      errors.push(
+        "This Linux host has no graphical desktop and no usable noVNC path. Install/configure a VNC/noVNC bridge or explicitly choose another runtime.",
+      );
+    } else if (!linuxCanCreateDisplay) {
+      errors.push(
+        "Host login mode needs DISPLAY/WAYLAND_DISPLAY, or an X virtual display if you intentionally plan to attach your own viewer.",
+      );
+    }
   }
 
   if ((platform === "darwin" || platform === "win32") && loginMode === "novnc" && !externalNoVnc) {
@@ -127,7 +142,7 @@ function inspectRuntime() {
     );
   }
 
-  if (loginMode === "host" && !hasDisplay && platform === "linux" && linuxCanCreateDisplay) {
+  if (loginMode === "host" && !hasGraphicalDisplay && platform === "linux" && linuxCanCreateDisplay) {
     warnings.push(
       "Host login mode will use an Xvfb display; without noVNC you must attach another viewer to interact with Chromium.",
     );
@@ -149,7 +164,8 @@ function inspectRuntime() {
     chromiumOverrideExists,
     externalNoVnc,
     noVncWeb,
-    hasDisplay,
+    hasDisplay: hasGraphicalDisplay,
+    hasX11Display,
     linuxCanCreateDisplay,
     linuxCanCreateNoVnc,
     display: env.DISPLAY || env.WAYLAND_DISPLAY || null,
@@ -177,7 +193,11 @@ function sleep(ms) {
 }
 
 async function startLinuxDisplay(report) {
-  if (env.DISPLAY || env.WAYLAND_DISPLAY) return;
+  const needsX11ForNoVnc =
+    report.loginMode === "novnc" && !report.externalNoVnc && !env.DISPLAY;
+
+  if (!needsX11ForNoVnc && (env.DISPLAY || env.WAYLAND_DISPLAY)) return;
+  if (env.DISPLAY) return;
 
   const display = String(env.PORTAL_DISPLAY || ":99");
   console.log(`Starting Xvfb on ${display}…`);
