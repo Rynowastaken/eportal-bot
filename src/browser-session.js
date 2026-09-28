@@ -15,7 +15,6 @@ const ROOT = path.resolve(__dirname, "..");
 const PROFILE_DIR = path.join(ROOT, ".eportal-profile");
 
 const STUDENT_BUTTON_SELECTOR = 'button[onclick*="NUTC_6401"]';
-const VIEWPORT = Object.freeze({ width: 1280, height: 800 });
 
 function externalLaunchPayload(request) {
   const url = new URL(request.url());
@@ -50,7 +49,6 @@ function externalLaunchPayload(request) {
 
 function topLevelExternalRequest(request, trackedPages) {
   if (!request.isNavigationRequest()) return false;
-
   const page = request.frame().page();
   if (!trackedPages.has(page)) return false;
   if (request.frame() !== page.mainFrame()) return false;
@@ -65,37 +63,43 @@ function topLevelExternalRequest(request, trackedPages) {
 export class PortalBrowserSession {
   constructor() {
     this.context = null;
-    this.remotePage = null;
-    this.remoteMode = false;
+    this.controlPage = null;
     this.operationQueue = Promise.resolve();
   }
 
   async init() {
     if (this.context) return;
+
     await fs.mkdir(PROFILE_DIR, { recursive: true });
 
     this.context = await chromium.launchPersistentContext(PROFILE_DIR, {
-      headless: true,
-      viewport: VIEWPORT,
+      headless: false,
+      viewport: null,
       locale: "zh-TW",
+      args: ["--window-size=1280,800", "--start-maximized"],
     });
 
     this.context.setDefaultTimeout(20_000);
     this.context.setDefaultNavigationTimeout(30_000);
 
     const pages = this.context.pages();
-    this.remotePage = pages[0] || (await this.context.newPage());
+    this.controlPage = pages[0] || (await this.context.newPage());
 
     this.context.on("page", (page) => {
-      if (this.remoteMode) this.remotePage = page;
+      this.controlPage = page;
     });
+
+    await this.controlPage.goto(EPORTAL_DASHBOARD, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    }).catch(() => {});
   }
 
   async close() {
     if (!this.context) return;
     await this.context.close();
     this.context = null;
-    this.remotePage = null;
+    this.controlPage = null;
   }
 
   async enqueue(task) {
@@ -106,36 +110,35 @@ export class PortalBrowserSession {
 
   async openLogin() {
     await this.init();
-    this.remoteMode = true;
-    if (!this.remotePage || this.remotePage.isClosed()) {
-      this.remotePage = await this.context.newPage();
+
+    if (!this.controlPage || this.controlPage.isClosed()) {
+      this.controlPage = await this.context.newPage();
     }
 
-    await this.remotePage.goto(EPORTAL_HOME, {
+    await this.controlPage.bringToFront();
+    await this.controlPage.goto(EPORTAL_HOME, {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     });
 
-    return this.remoteStatus();
+    return this.status();
   }
 
-  activeRemotePage() {
-    if (!this.remotePage || this.remotePage.isClosed()) {
-      throw new Error("Remote ePortal browser is not open.");
-    }
-    return this.remotePage;
-  }
-
-  async remoteStatus() {
+  async status() {
     await this.init();
-    const page = this.activeRemotePage();
-    let loggedIn = false;
 
+    const page =
+      this.controlPage && !this.controlPage.isClosed()
+        ? this.controlPage
+        : this.context.pages().find((entry) => !entry.isClosed());
+
+    if (!page) return { loggedIn: false, url: "", title: "" };
+
+    let loggedIn = false;
     try {
       loggedIn =
-        new URL(page.url()).hostname === "eportal.nutc.edu.tw" &&
-        ((await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0 ||
-          page.url().includes("/nutc_dashboard/"));
+        page.url().includes("/nutc_dashboard/") ||
+        (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
     } catch {
       loggedIn = false;
     }
@@ -144,69 +147,23 @@ export class PortalBrowserSession {
       loggedIn,
       url: page.url(),
       title: await page.title().catch(() => ""),
-      viewport: VIEWPORT,
     };
-  }
-
-  async screenshot() {
-    await this.init();
-    const page = this.activeRemotePage();
-    return page.screenshot({ type: "jpeg", quality: 70 });
-  }
-
-  async input(action) {
-    await this.init();
-    const page = this.activeRemotePage();
-
-    switch (action?.type) {
-      case "click": {
-        const x = Number(action.x);
-        const y = Number(action.y);
-        if (!Number.isFinite(x) || !Number.isFinite(y)) {
-          throw new Error("Invalid pointer coordinates.");
-        }
-        await page.mouse.click(
-          Math.max(0, Math.min(VIEWPORT.width, x)),
-          Math.max(0, Math.min(VIEWPORT.height, y)),
-        );
-        break;
-      }
-      case "wheel": {
-        const deltaX = Number(action.deltaX || 0);
-        const deltaY = Number(action.deltaY || 0);
-        await page.mouse.wheel(deltaX, deltaY);
-        break;
-      }
-      case "press": {
-        const key = String(action.key || "");
-        if (!key || key.length > 40) throw new Error("Invalid key.");
-        await page.keyboard.press(key);
-        break;
-      }
-      case "text": {
-        const text = String(action.text || "");
-        if (!text || text.length > 256) throw new Error("Invalid text input.");
-        await page.keyboard.insertText(text);
-        break;
-      }
-      default:
-        throw new Error("Unknown remote browser input action.");
-    }
-
-    return this.remoteStatus();
   }
 
   async assertLoggedIn() {
     await this.init();
+
     const page = await this.context.newPage();
     try {
       await page.goto(EPORTAL_DASHBOARD, {
         waitUntil: "domcontentloaded",
         timeout: 30_000,
       });
+
       if ((await page.locator(STUDENT_BUTTON_SELECTOR).count()) === 0) {
         throw new Error("ePortal login is required.");
       }
+
       return true;
     } finally {
       await page.close();
@@ -218,7 +175,6 @@ export class PortalBrowserSession {
 
     return this.enqueue(async () => {
       await this.assertLoggedIn();
-      this.remoteMode = false;
 
       const trackedPages = new Set();
       const page = await this.context.newPage();
@@ -230,6 +186,7 @@ export class PortalBrowserSession {
       let settled = false;
       let resolveLaunch;
       let rejectLaunch;
+
       const launchPromise = new Promise((resolve, reject) => {
         resolveLaunch = resolve;
         rejectLaunch = reject;
@@ -244,6 +201,7 @@ export class PortalBrowserSession {
 
       const routeHandler = async (route) => {
         const request = route.request();
+
         if (!settled && topLevelExternalRequest(request, trackedPages)) {
           try {
             const payload = externalLaunchPayload(request);
@@ -255,9 +213,11 @@ export class PortalBrowserSession {
             clearTimeout(timeout);
             rejectLaunch(error);
           }
+
           await route.abort("blockedbyclient");
           return;
         }
+
         await route.continue();
       };
 
@@ -269,7 +229,7 @@ export class PortalBrowserSession {
           timeout: 25_000,
         }).catch(() => {
           // Expected: the external request is aborted before the one-time SSO
-          // ticket is consumed by the persistent Chromium context.
+          // ticket is consumed by the persistent Chromium browser.
         });
 
         return await launchPromise;
@@ -277,8 +237,9 @@ export class PortalBrowserSession {
         clearTimeout(timeout);
         await this.context.unroute("**/*", routeHandler).catch(() => {});
         this.context.off("page", onPage);
+
         for (const tracked of trackedPages) {
-          if (!tracked.isClosed() && tracked !== this.remotePage) {
+          if (!tracked.isClosed() && tracked !== this.controlPage) {
             await tracked.close().catch(() => {});
           }
         }
@@ -288,12 +249,14 @@ export class PortalBrowserSession {
 
   async ensureAisSession() {
     await this.assertLoggedIn();
+
     const page = await this.context.newPage();
     try {
       await page.goto(moduleUrl("ais"), {
         waitUntil: "domcontentloaded",
         timeout: 30_000,
       });
+
       await page.waitForURL((url) => url.hostname === "ais.nutc.edu.tw", {
         timeout: 20_000,
       });
@@ -310,6 +273,7 @@ export class PortalBrowserSession {
       }
 
       await this.ensureAisSession();
+
       const method = String(options.method || "GET").toUpperCase();
       const requestOptions = { timeout: 30_000 };
 
@@ -317,8 +281,14 @@ export class PortalBrowserSession {
       if (options.form) requestOptions.form = options.form;
       if (options.data) requestOptions.data = options.data;
 
-      if (method === "GET") return this.context.request.get(url.toString(), requestOptions);
-      if (method === "POST") return this.context.request.post(url.toString(), requestOptions);
+      if (method === "GET") {
+        return this.context.request.get(url.toString(), requestOptions);
+      }
+
+      if (method === "POST") {
+        return this.context.request.post(url.toString(), requestOptions);
+      }
+
       throw new Error("Only GET and POST are supported for AIS requests.");
     });
   }
