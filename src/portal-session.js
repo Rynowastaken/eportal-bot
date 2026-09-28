@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { EPORTAL_DASHBOARD, EPORTAL_HOME } from "./eportal.js";
+import { EPORTAL_DASHBOARD, EPORTAL_HOME, moduleUrl } from "./eportal.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,6 +105,43 @@ export async function checkServerPortalStatus({ timeout = 30_000 } = {}) {
     };
   } finally {
     if (context) await context.close().catch(() => {});
+  }
+}
+
+
+export async function openAisWithServerSession({ headless = true } = {}) {
+  const context = await openServerPortalSession({ headless });
+  const page = context.pages()[0] || (await context.newPage());
+
+  try {
+    await page.goto(EPORTAL_DASHBOARD, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+
+    const loggedIn =
+      (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+
+    if (!loggedIn) {
+      const error = new Error("Server ePortal session expired. Run: npm run login");
+      error.code = "EPORTAL_LOGIN_REQUIRED";
+      throw error;
+    }
+
+    await page.goto(moduleUrl("ais"), {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+
+    await page.waitForURL(
+      (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
+      { timeout: 20_000 },
+    );
+
+    return { context, page };
+  } catch (error) {
+    await context.close().catch(() => {});
+    throw error;
   }
 }
 
