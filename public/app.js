@@ -1,6 +1,6 @@
 const EPORTAL_ORIGIN = "https://eportal.nutc.edu.tw";
-const EPORTAL_LOGIN =
-  "https://eportal.nutc.edu.tw/login_main.php#nutc-portal-bridge=login";
+const EPORTAL_LOGIN = "https://eportal.nutc.edu.tw/login_main.php";
+const USERSCRIPT_SOURCE = "nutc-portal-userscript";
 
 const moduleGrid = document.querySelector("#moduleGrid");
 const loginButton = document.querySelector("#loginButton");
@@ -25,6 +25,7 @@ const icons = {
 let authWindow = null;
 let authWindowTimer = null;
 let pendingModulePath = null;
+let pendingNonce = null;
 let authState = "unknown";
 
 async function api(path) {
@@ -96,15 +97,46 @@ function startAuthWindowWatch() {
         pendingModulePath = null;
         setAuthState(
           "invalid",
-          "登入視窗已關閉，但 Dashboard 沒有收到成功通知。請確認 Bridge Extension 已載入。",
+          "登入視窗已關閉，但 Dashboard 沒有收到成功通知。請確認 NUTC Portal Userscript 已啟用。",
         );
       }
     }
   }, 500);
 }
 
+function createNonce() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+
+  const bytes = new Uint8Array(16);
+  globalThis.crypto?.getRandomValues?.(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function buildLoginUrl(modulePath, nonce) {
+  const returnUrl = new URL(window.location.href);
+  returnUrl.searchParams.delete("eportalAuth");
+  returnUrl.searchParams.delete("nonce");
+  returnUrl.searchParams.delete("eportalModule");
+
+  if (modulePath) {
+    returnUrl.searchParams.set("eportalModule", modulePath);
+  }
+
+  const loginUrl = new URL(EPORTAL_LOGIN);
+  const bridge = new URLSearchParams({
+    "nutc-portal-bridge": "login",
+    "nutc-portal-nonce": nonce,
+    "nutc-portal-return": returnUrl.toString(),
+  });
+
+  loginUrl.hash = bridge.toString();
+  return loginUrl.toString();
+}
+
 function openAuthFlow(modulePath = null) {
   pendingModulePath = modulePath;
+  pendingNonce = createNonce();
+
   setAuthState(
     "checking",
     modulePath
@@ -113,7 +145,7 @@ function openAuthFlow(modulePath = null) {
   );
 
   authWindow = window.open(
-    EPORTAL_LOGIN,
+    buildLoginUrl(modulePath, pendingNonce),
     "nutcEportalAuth",
     "popup=yes,width=1100,height=820,resizable=yes,scrollbars=yes",
   );
@@ -135,6 +167,7 @@ function openAuthFlow(modulePath = null) {
 function continueAfterLogin() {
   const targetPath = pendingModulePath;
   pendingModulePath = null;
+  pendingNonce = null;
 
   if (targetPath && authWindow && !authWindow.closed) {
     const targetUrl = new URL(targetPath, window.location.origin).toString();
@@ -154,11 +187,36 @@ function continueAfterLogin() {
 
 function handleBridgeMessage(event) {
   if (event.origin !== EPORTAL_ORIGIN) return;
-  if (!event.data || event.data.source !== "nutc-portal-bridge") return;
+  if (!event.data || event.data.source !== USERSCRIPT_SOURCE) return;
   if (event.data.type !== "auth-status" || event.data.loggedIn !== true) return;
+  if (!pendingNonce || event.data.nonce !== pendingNonce) return;
 
-  setAuthState("valid", "Bridge 已確認目前瀏覽器的 ePortal 登入狀態。");
+  setAuthState("valid", "Userscript 已確認目前瀏覽器的 ePortal 登入狀態。");
   continueAfterLogin();
+}
+
+function consumeMobileReturn() {
+  const url = new URL(window.location.href);
+  const success = url.searchParams.get("eportalAuth") === "ok";
+  if (!success) return false;
+
+  const modulePath = url.searchParams.get("eportalModule") || "";
+
+  url.searchParams.delete("eportalAuth");
+  url.searchParams.delete("nonce");
+  url.searchParams.delete("eportalModule");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+
+  setAuthState(
+    "valid",
+    "Userscript 已確認手機瀏覽器的 ePortal 登入狀態。",
+  );
+
+  if (/^\/go\/[a-z0-9-]+$/.test(modulePath)) {
+    location.replace(modulePath);
+  }
+
+  return true;
 }
 
 function renderModules(modules) {
@@ -212,6 +270,8 @@ dialogClose.addEventListener("click", () => statusDialog.close());
   try {
     const { modules } = await api("/api/modules");
     renderModules(modules);
+
+    if (consumeMobileReturn()) return;
 
     const lastVerified = Number(sessionStorage.getItem("nutcPortalVerifiedAt") || 0);
     if (lastVerified && Date.now() - lastVerified < 30 * 60 * 1000) {
