@@ -797,3 +797,8 @@ code {
     width: 100%;
   }
 }
+
+
+.status-dot.idle {
+  background: rgba(247, 241, 246, 0.32);
+}
