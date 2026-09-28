@@ -1,56 +1,60 @@
 # NUTC Portal
 
-
-> [!NOTE]
-> This project is entirely vibe coded with GPT-5.5 and GPT-5.6 Sol. Support and bug fixes are not guaranteed.
-
 個人自架的國立臺中科技大學校園 Dashboard。
 
-Web 入口預期放在 **Cloudflare Access** 後方，因此應用程式本身不再提供第二層 PIN / 密碼登入畫面。
+這個版本採用 **單一 persistent Chromium session**：
 
-互動式校務登入也不再使用伺服器端 Playwright：你會在**目前正在使用的瀏覽器**直接登入官方 ePortal，ePortal cookie 留在該瀏覽器裡。之後點 Dashboard 的卡片，瀏覽器會先進入官方 ePortal 模組入口，再由官方 SSO 前往 AIS / WebMail / 活動 / EP / TronClass。
+- Dashboard 放在 Cloudflare Access 後面
+- 不再有第二層 PIN
+- 不再有第二份 Playwright `storage_state`
+- 不再需要 `npm run login`
+- 樹莓派只保存一個 `.eportal-profile/`
+- ePortal 登入、五個系統 SSO、未來課表/API 抓取全部共用同一個 Playwright BrowserContext
 
-## UI / architecture
-
-Web UI 延續同帳號 [Rynowastaken/budget](https://github.com/Rynowastaken/budget) 的方式：
-
-- plain Node.js server
-- 不需要 frontend build step
-- dark glass / blur interface
-- pink / gold accent
-- mobile-first responsive layout
-- 原生 HTML / CSS / JS
-- Dashboard authentication delegated to Cloudflare Access
-
-## Interactive web flow
+## 架構
 
 ```text
 Browser
   ↓
 Cloudflare Access
   ↓
-NUTC Portal Dashboard
+NUTC Portal
   ↓
-「登入 ePortal」→ official ePortal in another tab of the same browser
+內嵌 noVNC
   ↓
-browser receives ePortal cookies
+Xvfb 上的 persistent Chromium
   ↓
-Dashboard module card
+official ePortal login
   ↓
-/go/:module
-  ↓
-302 → official ePortal module path
-  ↓
-browser automatically sends its own ePortal cookies
-  ↓
-official SSO → AIS / WebMail / Activity / EP / TronClass
+.eportal-profile/
+  ├─ SSO → AIS
+  ├─ SSO → WebMail
+  ├─ SSO → Activity
+  ├─ SSO → EP
+  ├─ SSO → TronClass
+  └─ context.request → timetable/API scraping
 ```
 
-Dashboard server 不讀取、不複製、不保存瀏覽器的 ePortal cookie。
+登入時看到的仍然是官方 ePortal 頁面，只是 Chromium 跑在樹莓派上，再透過 noVNC 顯示在 Dashboard 裡。
 
-如果模組把你導回 ePortal 登入頁，只要完成官方登入，再回 Dashboard 點一次即可。
+## 為什麼使用 persistent Chromium
 
-## 從 ePortal 附件解析出的入口
+一般瀏覽器的 ePortal cookie 受 same-origin / HttpOnly 等瀏覽器安全規則保護，無法同時直接變成樹莓派背景爬蟲的 session。
+
+因此若要真正「只登入一次、Dashboard 與爬蟲完全共用」，最乾淨的方式就是讓樹莓派上的 persistent Chromium 成為唯一 session owner。
+
+## UI
+
+介面延續同帳號的 [Rynowastaken/budget](https://github.com/Rynowastaken/budget)：
+
+- plain Node.js
+- no frontend build step
+- dark glass / blur UI
+- pink / gold accent
+- responsive layout
+- 原生 HTML / CSS / JS
+
+## ePortal 模組
 
 | 模組 | ePortal path |
 | --- | --- |
@@ -60,130 +64,157 @@ Dashboard server 不讀取、不複製、不保存瀏覽器的 ePortal cookie。
 | 學生學習歷程（EP） | `/ext_module/ext_set_param.php?mod_id=_OSL256_pmabVqSXTYna294Vl9JLJg` |
 | TronClass | `/ext_module/ext_set_param.php?mod_id=_OSL256_OBbFAusuXIjtGB-G8RS4gQ` |
 
-## 安裝
+## Raspberry Pi 安裝
 
-需要 Node.js 18+：
+需要 Node.js 18+。
+
+安裝 noVNC / virtual display：
+
+```bash
+sudo apt update
+sudo apt install -y xvfb x11vnc novnc websockify
+```
+
+安裝 Node dependencies：
 
 ```bash
 npm install
-npx playwright install chromium
+npm run install-browser
 ```
 
-Playwright 只用於後面的背景自動化 / 課表抓取；純 Web Dashboard launcher 本身不需要用 Playwright 開另一個瀏覽器。
-
-## 啟動 Dashboard
+啟動：
 
 ```bash
 npm start
 ```
 
-預設只監聽：
+`npm start` 會一起啟動：
 
 ```text
-127.0.0.1:4173
+Xvfb :99
+x11vnc 127.0.0.1:5900
+websockify/noVNC 127.0.0.1:6080
+Playwright Chromium
+NUTC Portal 127.0.0.1:4173
 ```
-
-這個預設特別適合同一台 Raspberry Pi 上的 Cloudflare Tunnel：
-
-```text
-Cloudflare Access
-      ↓
-Cloudflare Tunnel
-      ↓
-http://127.0.0.1:4173
-```
-
-如果 `cloudflared` 在另一個 container / host，需要讓 LAN/container network 存取 Node server，可以明確設定：
-
-```bash
-HOST=0.0.0.0 npm start
-```
-
-這時請確保 firewall / container network 不會繞過 Cloudflare Access 直接公開 origin。
 
 ## Cloudflare Access
 
-應用程式本身**不驗證 Cloudflare JWT**；它假設只有通過 Access 的流量能到達 origin。
-
-因此請至少做到其中一種：
-
-- Cloudflare Tunnel 直接連 `127.0.0.1:4173`
-- firewall 阻擋公開 origin port
-- private container network，只允許 cloudflared 到 Node server
-
-不要同時把 Raspberry Pi 的 `4173` port 直接暴露到 Internet。
-
-## 瀏覽器登入 ePortal
-
-Dashboard 右上角以及首頁都有：
+建議 Cloudflare Tunnel 直接指向：
 
 ```text
-登入 ePortal
+http://127.0.0.1:4173
 ```
 
-按下後會在目前瀏覽器的新分頁打開：
+只有 4173 需要交給 Tunnel。
+
+5900 / 6080 都綁在 localhost；noVNC 由 Node server 的：
 
 ```text
-https://eportal.nutc.edu.tw/
+/novnc/
 ```
 
-正常完成官方登入即可。這個網站不會看到你的 ePortal 帳密。
+反向代理出去，所以仍會經過同一層 Cloudflare Access。
 
-接著回 Dashboard 點任何模組卡片；`/go/:module` 只做 server-side 302 redirect 到官方 ePortal path，因此真正帶 cookie / 完成 SSO 的仍然是你的瀏覽器。
+不要直接把 Raspberry Pi 的 4173 / 5900 / 6080 port 暴露到 Internet。
 
-## 背景自動化 / 課表爬取
+## 登入
 
-這部分與互動式 Web session **刻意分離**。
-
-樹莓派若需要每天自動抓課表，仍然使用 Playwright 自己的 `storage_state`：
-
-```bash
-npm run login
-```
-
-這會開 Playwright Chromium，讓你做一次人工登入，並保存：
+打開 NUTC Portal 後按：
 
 ```text
-eportal-auth-state.json
+ePortal 登入
 ```
 
-之後背景 job 才可以：
+Dashboard 會：
 
-```bash
-node eportal_bot.js run \
-  --fetch-url 'https://ais.nutc.edu.tw/student/REPLACE_WITH_TIMETABLE_ENDPOINT'
+1. 把 persistent Chromium 導到官方 ePortal
+2. 在同一頁開啟 noVNC
+3. 你直接操作官方 ePortal 完成登入
+4. 登入 cookie / local storage 保存在 `.eportal-profile/`
+5. 關閉登入視窗即可
+
+重新啟動 server 後 Chromium 仍會讀同一個 profile。
+
+## 開啟校務系統
+
+Dashboard 卡片不直接使用固定 JWT。
+
+流程：
+
+```text
+/go/ais
+  ↓
+persistent Chromium 已登入 ePortal
+  ↓
+ePortal 即時產生新的短效 SSO
+  ↓
+server 在 ticket 被 Chromium 消耗前攔截 external navigation
+  ↓
+302 / auto-submit POST
+  ↓
+目前瀏覽器進入目標系統
 ```
 
-這個 Playwright session **不是** Web Dashboard 的互動式 session；兩者不需要互相複製 cookie。
+短效 JWT / SSO ticket 不寫入 Git、不寫入檔案，也不刻意輸出到 console。
+
+## 背景課表抓取
+
+`src/browser-session.js` 已提供：
+
+```js
+browserSession.fetchAis(url, options)
+```
+
+它會：
+
+1. 使用同一個 persistent ePortal profile
+2. 重新走 AIS SSO
+3. 使用同一 BrowserContext 的 `context.request`
+4. 發 authenticated request
+
+等課表 Network endpoint 確認後，就能直接把這個結果接到 Dashboard API / JSON / CSV，不需要再登入一次。
 
 ## Security
 
-永遠不要 commit：
-
-- `eportal-auth-state.json`
-- cookies
-- JWT / SSO ticket
-- ASP.NET session
-- `PUBLIC_APP_USER_SSO_TOKEN`
-- browser profile
-
-互動式 Dashboard 不會保存學校 token。Playwright storage state 只供 Raspberry Pi 背景自動化使用。
-
-## 主要檔案
+唯一需要保護的 ePortal session 資料是：
 
 ```text
-server.js            Static server, API and /go/:module redirects
-src/eportal.js       Module definitions + Playwright automation helpers
-public/index.html    Dashboard structure
-public/app.css       Budget-inspired glass UI
-public/app.js        Module-card rendering
-eportal_bot.js       Playwright CLI for background automation
+.eportal-profile/
 ```
 
-syntax check：
+已加入 `.gitignore`。
+
+不要 commit：
+
+- browser profile
+- cookies
+- JWT
+- ASP.NET session
+- `PUBLIC_APP_USER_SSO_TOKEN`
+
+noVNC 的 VNC backend 沒有額外 VNC password，因為它只綁 localhost，並由 Cloudflare Access 保護的 Node origin 代理出去。因此 **不要繞過 Cloudflare 直接公開 origin**。
+
+## 專案結構
+
+```text
+server.js
+src/
+  eportal.js
+  browser-session.js
+public/
+  index.html
+  app.css
+  app.js
+scripts/
+  start.sh
+package.json
+```
+
+## Syntax check
 
 ```bash
 npm run check
 ```
 
-下一步是分析 AIS 課表 Network endpoint，然後把背景爬蟲結果顯示成 Dashboard 的「今日課表」資料卡。
+下一步：找出 AIS 課表 Network endpoint，再把「今日課表 / 本週課表」直接顯示在 Dashboard。
