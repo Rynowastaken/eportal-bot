@@ -4,7 +4,7 @@
 
 目前有兩條彼此獨立的 ePortal session：
 
-- **Server session**：Playwright persistent profile，供背景工作、排程與未來課表抓取使用。
+- **Server session**：Playwright persistent profile，供背景工作、排程，以及 Dashboard 內的學生管理資料使用。
 - **Client session**：目前瀏覽器自己的 ePortal session；Userscript 只做便利的登入狀態通知與 Dashboard bridge，不會把 cookie 傳給 server。
 
 ## Install
@@ -55,6 +55,33 @@ error
 ```
 
 Dashboard 也會顯示 server session 是否需要重新登入。
+
+## Server-backed Student Management
+
+The **學生管理** card now opens the local Dashboard page:
+
+```text
+/student.html
+```
+
+instead of redirecting the browser directly to AIS. The page calls:
+
+```text
+GET /api/ais/overview
+```
+
+The server uses `.eportal-profile/` with headless Playwright, completes the normal
+ePortal → AIS SSO flow, and returns only sanitized visible headings/tables/text from
+the rendered AIS page. Browser cookies, ePortal cookies, JWTs, and SSO URLs are not
+returned to the client.
+
+This means the Student Management Dashboard view works from Incognito / guest browsers
+as long as the Dashboard itself is accessible through Cloudflare Access and the saved
+server ePortal session is still valid.
+
+The **開啟官方 AIS** link remains available inside the page. That link opens the real
+school site in the current browser and therefore still requires that browser's own
+ePortal/AIS login.
 
 ## Headless/background use
 
