@@ -2,11 +2,8 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  EPORTAL_HOME,
-  moduleUrl,
-  publicModules,
-} from "./src/eportal.js";
+import { PortalBrowserSession } from "./src/browser-session.js";
+import { publicModules } from "./src/eportal.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +11,7 @@ const publicDir = path.join(__dirname, "public");
 const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
+const browserSession = new PortalBrowserSession();
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -30,6 +28,18 @@ function sendError(res, status, message) {
   sendJson(res, status, { error: message });
 }
 
+function sendHtml(res, status, html) {
+  const payload = Buffer.from(html);
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": payload.length,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+  });
+  res.end(payload);
+}
+
 function redirect(res, location) {
   res.writeHead(302, {
     Location: location,
@@ -37,6 +47,39 @@ function redirect(res, location) {
     "Referrer-Policy": "no-referrer",
   });
   res.end();
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function autoSubmitForm(launch) {
+  const fields = (launch.fields || [])
+    .map(
+      ([name, value]) =>
+        `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`,
+    )
+    .join("");
+
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <title>正在開啟校務系統…</title>
+</head>
+<body>
+  <p>正在完成官方 SSO…</p>
+  <form id="sso" method="post" action="${escapeHtml(launch.url)}">
+    ${fields}
+  </form>
+  <script>document.getElementById("sso").submit();</script>
+</body>
+</html>`;
 }
 
 function contentType(filePath) {
@@ -51,6 +94,36 @@ function contentType(filePath) {
     case ".webp": return "image/webp";
     case ".svg": return "image/svg+xml";
     default: return "application/octet-stream";
+  }
+}
+
+async function parseJsonBody(req, limit = 64_000) {
+  const chunks = [];
+  let size = 0;
+
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw new Error("Request body is too large.");
+    chunks.push(chunk);
+  }
+
+  if (!chunks.length) return {};
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+function assertSameSiteMutation(req) {
+  const site = String(req.headers["sec-fetch-site"] || "");
+  if (site && !["same-origin", "same-site", "none"].includes(site)) {
+    const error = new Error("Cross-site mutation blocked.");
+    error.status = 403;
+    throw error;
+  }
+
+  const type = String(req.headers["content-type"] || "");
+  if (req.method === "POST" && !type.startsWith("application/json")) {
+    const error = new Error("JSON request required.");
+    error.status = 415;
+    throw error;
   }
 }
 
@@ -75,7 +148,7 @@ async function serveStatic(res, pathname) {
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "Content-Security-Policy":
-        "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+        "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     res.end(body);
   } catch {
@@ -88,7 +161,7 @@ async function handleApi(req, res, url) {
     sendJson(res, 200, {
       startedAt: serverStartedAt,
       authMode: "cloudflare-access",
-      eportalSessionMode: "browser",
+      eportalSessionMode: "persistent-playwright",
     });
     return;
   }
@@ -98,8 +171,83 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/browser/status") {
+    sendJson(res, 200, await browserSession.remoteStatus());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/browser/frame") {
+    const image = await browserSession.screenshot();
+    res.writeHead(200, {
+      "Content-Type": "image/jpeg",
+      "Content-Length": image.length,
+      "Cache-Control": "no-store, max-age=0",
+      Pragma: "no-cache",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end(image);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/browser/open") {
+    assertSameSiteMutation(req);
+    await parseJsonBody(req);
+    sendJson(res, 200, await browserSession.openLogin());
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/browser/input") {
+    assertSameSiteMutation(req);
+    const body = await parseJsonBody(req);
+    sendJson(res, 200, await browserSession.input(body));
+    return;
+  }
+
   sendError(res, 404, "API route not found.");
 }
+
+async function handleModuleLaunch(res, moduleId) {
+  try {
+    const launch = await browserSession.captureModuleLaunch(moduleId);
+
+    if (launch.kind === "url") {
+      redirect(res, launch.url);
+      return;
+    }
+
+    if (launch.kind === "form") {
+      sendHtml(res, 200, autoSubmitForm(launch));
+      return;
+    }
+
+    sendHtml(
+      res,
+      502,
+      "<!doctype html><meta charset=utf-8><p>無法辨識 ePortal SSO 格式。</p>",
+    );
+  } catch (error) {
+    const message = String(error?.message || "Unable to launch module.");
+    const loginRequired = /login is required/i.test(message);
+    sendHtml(
+      res,
+      loginRequired ? 409 : 502,
+      `<!doctype html>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<title>無法開啟校務系統</title>
+<body style="font-family:system-ui;background:#141018;color:#f7f1f6;padding:2rem">
+  <h1 style="font-size:1.3rem">無法開啟校務系統</h1>
+  <p style="color:#c7bdc7">${escapeHtml(
+    loginRequired
+      ? "請回到 NUTC Portal，開啟「ePortal 登入」面板並先完成官方登入。"
+      : message,
+  )}</p>
+</body>`,
+    );
+  }
+}
+
+await browserSession.init();
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -110,31 +258,34 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "GET" && url.pathname === "/login/eportal") {
-      redirect(res, EPORTAL_HOME);
-      return;
-    }
-
     const goMatch = req.method === "GET" && url.pathname.match(/^\/go\/([a-z0-9-]+)$/);
     if (goMatch) {
-      try {
-        redirect(res, moduleUrl(goMatch[1]));
-      } catch {
-        sendError(res, 404, "Unknown ePortal module.");
-      }
+      await handleModuleLaunch(res, goMatch[1]);
       return;
     }
 
     await serveStatic(res, url.pathname);
   } catch (error) {
     console.error("Request failed:", error?.message || error);
-    if (!res.headersSent) sendError(res, 500, "Internal server error.");
-    else res.end();
+    if (!res.headersSent) {
+      sendError(res, Number(error?.status) || 500, error?.message || "Internal server error.");
+    } else {
+      res.end();
+    }
   }
 });
 
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
   console.log("Dashboard authentication: delegated to Cloudflare Access.");
-  console.log("Interactive ePortal login: uses the current user's browser session.");
+  console.log("ePortal session: one persistent Playwright Chromium profile.");
 });
+
+async function shutdown() {
+  await browserSession.close().catch(() => {});
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3_000).unref();
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
