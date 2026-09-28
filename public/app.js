@@ -193,11 +193,9 @@ function renderModules(modules) {
     button.append(icon, copy);
 
     button.addEventListener("click", () => {
-      if (authState === "valid") {
-        window.open(module.launchPath, "_blank", "noopener");
-        return;
-      }
-
+      // Always verify the current client-browser ePortal session first.
+      // If already logged in, the Bridge responds immediately and this same
+      // popup continues to the requested module.
       openAuthFlow(module.launchPath);
     });
 
