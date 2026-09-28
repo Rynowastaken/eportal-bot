@@ -164,8 +164,8 @@ function finishAuthCheck() {
   closeAuthTracking();
 }
 
-async function syncPreferences(preferences) {
-  if (!preferences || typeof preferences !== "object") return;
+async function syncProfile(profile) {
+  if (!profile || typeof profile !== "object") return;
 
   try {
     const response = await fetch("/api/sync", {
@@ -175,14 +175,14 @@ async function syncPreferences(preferences) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(preferences),
+      body: JSON.stringify({ profile }),
     });
 
     if (!response.ok) {
-      throw new Error(`Preference sync failed (${response.status})`);
+      throw new Error(`Profile sync failed (${response.status})`);
     }
   } catch (error) {
-    console.warn("Preference sync failed:", error?.message || error);
+    console.warn("Profile sync failed:", error?.message || error);
   }
 }
 
@@ -206,7 +206,7 @@ function handleBridgeMessage(event) {
   if (event.data.type !== "auth-status" || event.data.loggedIn !== true) return;
   if (!pendingNonce || event.data.nonce !== pendingNonce) return;
 
-  void syncPreferences(event.data.preferences);
+  void syncProfile(event.data.profile);
   setAuthState("valid", "Userscript 已確認目前瀏覽器的 ePortal session 仍有效。");
   finishAuthCheck();
 }
@@ -216,15 +216,15 @@ function consumeMobileReturn() {
   if (url.searchParams.get("eportalAuth") !== "ok") return false;
 
   const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
-  const preferences = decodePreferences(hash.get("nutc-sync"));
+  const profile = decodePreferences(hash.get("nutc-profile"));
 
   url.searchParams.delete("eportalAuth");
   url.searchParams.delete("nonce");
-  hash.delete("nutc-sync");
+  hash.delete("nutc-profile");
   url.hash = hash.toString();
   history.replaceState(null, "", url.pathname + url.search + url.hash);
 
-  if (preferences) void syncPreferences(preferences);
+  if (profile) void syncProfile(profile);
 
   setAuthState(
     "valid",
