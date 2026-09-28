@@ -1,5 +1,5 @@
 const EPORTAL_ORIGIN = "https://eportal.nutc.edu.tw";
-const EPORTAL_LOGIN = "https://eportal.nutc.edu.tw/";
+const EPORTAL_CHECK = "https://eportal.nutc.edu.tw/nutc_dashboard/";
 const USERSCRIPT_SOURCE = "nutc-portal-userscript";
 
 const moduleGrid = document.querySelector("#moduleGrid");
@@ -24,7 +24,6 @@ const icons = {
 
 let authWindow = null;
 let authWindowTimer = null;
-let pendingModulePath = null;
 let pendingNonce = null;
 let authState = "unknown";
 
@@ -58,22 +57,22 @@ function setAuthState(state, detail) {
   }
 
   if (state === "checking") {
-    portalStatusTitle.textContent = "正在等待 ePortal";
+    portalStatusTitle.textContent = "正在檢查 ePortal";
     portalStatusDetail.textContent =
-      detail || "請在剛開啟的官方 ePortal 視窗完成登入。";
+      detail || "若 session 還有效會立即確認；失效時才需要在官方頁面重新登入。";
     return;
   }
 
   if (state === "invalid") {
     portalStatusTitle.textContent = "ePortal 登入未完成";
     portalStatusDetail.textContent =
-      detail || "重新點擊登入或系統卡片即可再試一次。";
+      detail || "重新點擊「檢查 / 登入 ePortal」即可再試一次。";
     return;
   }
 
   portalStatusTitle.textContent = "ePortal 尚未檢查";
   portalStatusDetail.textContent =
-    detail || "點登入或任一系統卡片即可檢查。";
+    detail || "可直接開啟系統；若想確認登入狀態，再按「檢查 / 登入 ePortal」。";
 }
 
 function closeAuthTracking() {
@@ -94,10 +93,9 @@ function startAuthWindowWatch() {
       authWindow = null;
 
       if (authState !== "valid") {
-        pendingModulePath = null;
         setAuthState(
           "invalid",
-          "登入視窗已關閉，但 Dashboard 沒有收到成功通知。請確認 NUTC Portal Userscript 已啟用。",
+          "檢查視窗已關閉，但 Dashboard 沒有收到成功通知。請確認 NUTC Portal Userscript 已啟用。",
         );
       }
     }
@@ -112,49 +110,40 @@ function createNonce() {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-function buildLoginUrl(modulePath, nonce) {
+function buildCheckUrl(nonce) {
   const returnUrl = new URL(window.location.href);
   returnUrl.searchParams.delete("eportalAuth");
   returnUrl.searchParams.delete("nonce");
-  returnUrl.searchParams.delete("eportalModule");
 
-  if (modulePath) {
-    returnUrl.searchParams.set("eportalModule", modulePath);
-  }
-
-  const loginUrl = new URL(EPORTAL_LOGIN);
-  const bridge = new URLSearchParams({
+  const checkUrl = new URL(EPORTAL_CHECK);
+  checkUrl.hash = new URLSearchParams({
     "nutc-portal-bridge": "login",
     "nutc-portal-nonce": nonce,
     "nutc-portal-return": returnUrl.toString(),
-  });
+  }).toString();
 
-  loginUrl.hash = bridge.toString();
-  return loginUrl.toString();
+  return checkUrl.toString();
 }
 
-function openAuthFlow(modulePath = null) {
-  pendingModulePath = modulePath;
+function openAuthFlow() {
   pendingNonce = createNonce();
 
   setAuthState(
     "checking",
-    modulePath
-      ? "先確認 ePortal 登入；成功後會自動繼續開啟你剛才選的系統。"
-      : "請在官方 ePortal 視窗完成登入；成功後狀態會自動更新。",
+    "正在確認目前瀏覽器的 ePortal session；只有失效時才需要重新登入。",
   );
 
   authWindow = window.open(
-    buildLoginUrl(modulePath, pendingNonce),
+    buildCheckUrl(pendingNonce),
     "nutcEportalAuth",
     "popup=yes,width=1100,height=820,resizable=yes,scrollbars=yes",
   );
 
   if (!authWindow) {
-    pendingModulePath = null;
+    pendingNonce = null;
     setAuthState("unknown");
     showDialog(
-      "瀏覽器阻擋了登入視窗",
+      "瀏覽器阻擋了檢查視窗",
       "請允許這個 Dashboard 開啟 popup，然後再點一次「檢查 / 登入 ePortal」。",
     );
     return;
@@ -164,18 +153,8 @@ function openAuthFlow(modulePath = null) {
   startAuthWindowWatch();
 }
 
-function continueAfterLogin() {
-  const targetPath = pendingModulePath;
-  pendingModulePath = null;
+function finishAuthCheck() {
   pendingNonce = null;
-
-  if (targetPath && authWindow && !authWindow.closed) {
-    const targetUrl = new URL(targetPath, window.location.origin).toString();
-    authWindow.location.href = targetUrl;
-    authWindow = null;
-    closeAuthTracking();
-    return;
-  }
 
   if (authWindow && !authWindow.closed) {
     authWindow.close();
@@ -191,32 +170,38 @@ function handleBridgeMessage(event) {
   if (event.data.type !== "auth-status" || event.data.loggedIn !== true) return;
   if (!pendingNonce || event.data.nonce !== pendingNonce) return;
 
-  setAuthState("valid", "Userscript 已確認目前瀏覽器的 ePortal 登入狀態。");
-  continueAfterLogin();
+  setAuthState("valid", "Userscript 已確認目前瀏覽器的 ePortal session 仍有效。");
+  finishAuthCheck();
 }
 
 function consumeMobileReturn() {
   const url = new URL(window.location.href);
-  const success = url.searchParams.get("eportalAuth") === "ok";
-  if (!success) return false;
-
-  const modulePath = url.searchParams.get("eportalModule") || "";
+  if (url.searchParams.get("eportalAuth") !== "ok") return false;
 
   url.searchParams.delete("eportalAuth");
   url.searchParams.delete("nonce");
-  url.searchParams.delete("eportalModule");
   history.replaceState(null, "", url.pathname + url.search + url.hash);
 
   setAuthState(
     "valid",
-    "Userscript 已確認手機瀏覽器的 ePortal 登入狀態。",
+    "Userscript 已確認手機瀏覽器的 ePortal session 仍有效。",
   );
 
-  if (/^\/go\/[a-z0-9-]+$/.test(modulePath)) {
-    location.replace(modulePath);
-  }
-
   return true;
+}
+
+function openModule(module) {
+  // Do not preflight through the login page. The official module entry is the
+  // authoritative session check: valid sessions SSO immediately; expired
+  // sessions are sent to the official login flow and then continue onward.
+  const opened = window.open(module.launchPath, "_blank", "noopener");
+
+  if (!opened) {
+    showDialog(
+      "瀏覽器阻擋了新分頁",
+      "請允許這個 Dashboard 開啟新分頁，再重新點一次系統卡片。",
+    );
+  }
 }
 
 function renderModules(modules) {
@@ -245,24 +230,17 @@ function renderModules(modules) {
     const launch = document.createElement("span");
     launch.className = "module-launch";
     launch.innerHTML =
-      `<span>使用目前瀏覽器的 ePortal session</span><span aria-hidden="true">↗</span>`;
+      `<span>直接使用目前的 ePortal session</span><span aria-hidden="true">↗</span>`;
 
     copy.append(title, description, launch);
     button.append(icon, copy);
-
-    button.addEventListener("click", () => {
-      // Always verify the current client-browser ePortal session first.
-      // If already logged in, the Bridge responds immediately and this same
-      // popup continues to the requested module.
-      openAuthFlow(module.launchPath);
-    });
-
+    button.addEventListener("click", () => openModule(module));
     moduleGrid.append(button);
   }
 }
 
-loginButton.addEventListener("click", () => openAuthFlow());
-sessionLoginButton.addEventListener("click", () => openAuthFlow());
+loginButton.addEventListener("click", openAuthFlow);
+sessionLoginButton.addEventListener("click", openAuthFlow);
 window.addEventListener("message", handleBridgeMessage);
 dialogClose.addEventListener("click", () => statusDialog.close());
 
@@ -276,8 +254,8 @@ dialogClose.addEventListener("click", () => statusDialog.close());
     const lastVerified = Number(sessionStorage.getItem("nutcPortalVerifiedAt") || 0);
     if (lastVerified && Date.now() - lastVerified < 30 * 60 * 1000) {
       setAuthState(
-        "unknown",
-        "這個 Dashboard 分頁最近曾確認登入；重新點擊卡片時會在需要時再次走官方登入。",
+        "valid",
+        "這個 Dashboard 分頁最近已確認過登入；系統卡片會直接使用目前 session。",
       );
     } else {
       setAuthState("unknown");
