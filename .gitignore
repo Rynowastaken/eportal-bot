@@ -1,16 +1,9 @@
-# Authentication/session state - never commit
-eportal-auth-state.json
-*.auth.json
+# Canonical persistent ePortal browser profile - never commit
+.eportal-profile/
 
-# Local dashboard secrets
+# Local environment
 .env
 .env.*
-!.env.example
-
-# Playwright/browser state
-playwright/.auth/
-user-data-dir/
-.eportal-profile/
 
 # Node.js
 node_modules/
