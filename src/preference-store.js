@@ -8,39 +8,23 @@ const ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.join(ROOT, "data");
 const FILE = path.join(DATA_DIR, "preferences.json");
 
-const SENSITIVE_KEYS = new Set([
-  "access_token",
-  "refresh_token",
-  "id_token",
-  "auth_token",
-  "public_app_user_sso_token",
-  "asp.net_sessionid",
-]);
-const PREFERENCE_KEY =
-  /(^|[_:.-])(theme|layout|ui|pref|preference|setting|settings|locale|language|lang|sidebar|dashboard|display|density|compact|sort|order|view|color|font|mode|size|widget|card|profile)([_:.-]|$)/i;
+function cleanProfile(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
-function isSensitiveKey(key) {
-  return SENSITIVE_KEYS.has(String(key).toLowerCase());
-}
+  const id = typeof value.id === "string" ? value.id.trim().toLowerCase() : "";
+  const displayName =
+    typeof value.displayName === "string" ? value.displayName.trim() : "";
 
-function cleanBucket(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  if (!/^[a-f0-9]{64}$/.test(id)) return null;
+  if (!displayName || displayName.length > 128) return null;
 
-  const output = {};
-  for (const [key, rawValue] of Object.entries(value)) {
-    if (typeof key !== "string" || key.length > 128) continue;
-    if (isSensitiveKey(key) || !PREFERENCE_KEY.test(key)) continue;
-    if (typeof rawValue !== "string" || rawValue.length > 8192) continue;
-    output[key] = rawValue;
-  }
-  return output;
+  return { id, displayName };
 }
 
 export class PreferenceStore {
   constructor() {
     this.value = {
-      localStorage: {},
-      sessionStorage: {},
+      profile: null,
       updatedAt: null,
     };
   }
@@ -52,8 +36,7 @@ export class PreferenceStore {
       const raw = await fs.readFile(FILE, "utf8");
       const parsed = JSON.parse(raw);
       this.value = {
-        localStorage: cleanBucket(parsed.localStorage),
-        sessionStorage: cleanBucket(parsed.sessionStorage),
+        profile: cleanProfile(parsed.profile),
         updatedAt: parsed.updatedAt || null,
       };
     } catch (error) {
@@ -68,9 +51,15 @@ export class PreferenceStore {
   }
 
   async set(payload) {
+    const profile = cleanProfile(payload?.profile);
+    if (!profile) {
+      throw Object.assign(new Error("A valid DOM-derived profile is required."), {
+        statusCode: 400,
+      });
+    }
+
     this.value = {
-      localStorage: cleanBucket(payload?.localStorage),
-      sessionStorage: cleanBucket(payload?.sessionStorage),
+      profile,
       updatedAt: new Date().toISOString(),
     };
 
