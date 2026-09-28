@@ -177,5 +177,6 @@ await preferenceStore.init();
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
   console.log("Dashboard authentication: delegated to Cloudflare Access.");
-  console.log("ePortal session: owned by the user's browser.");
+  console.log("Server ePortal session: persistent Playwright profile at .eportal-profile/");
+  console.log("Client ePortal session: optional userscript/browser convenience path.");
 });
