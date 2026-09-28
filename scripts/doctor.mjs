@@ -12,8 +12,7 @@ const required = [
   "public/index.html",
   "public/app.js",
   "public/app.css",
-  "extension/manifest.json",
-  "extension/eportal-bridge.js",
+  "public/userscript/nutc-portal.user.js",
 ];
 
 const major = Number(process.versions.node.split(".")[0]);
@@ -34,7 +33,7 @@ console.log(`  platform: ${process.platform} (${process.arch})`);
 console.log(`  node: ${process.version}`);
 console.log("  interactive ePortal login: client browser");
 console.log("  server-side browser: not required");
-console.log("  automatic login detection: WebExtension bridge");
+console.log("  automatic login detection: userscript bridge");
 
 for (const error of errors) console.error(`  error: ${error}`);
 
