@@ -5,7 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, moduleUrl, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
-import { checkServerPortalStatus } from "./src/portal-session.js";
+import { checkServerPortalStatus, fetchAisOverview } from "./src/portal-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -123,6 +123,23 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/portal-status") {
       const status = await checkServerPortalStatus();
       sendJson(res, 200, status);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/ais/overview") {
+      try {
+        sendJson(res, 200, await fetchAisOverview());
+      } catch (error) {
+        if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
+          sendJson(res, 503, {
+            error: error.message,
+            code: error.code,
+            needsLogin: true,
+          });
+          return;
+        }
+        throw error;
+      }
       return;
     }
 
