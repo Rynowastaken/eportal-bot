@@ -1,16 +1,13 @@
+const EPORTAL_ORIGIN = "https://eportal.nutc.edu.tw";
+const EPORTAL_LOGIN =
+  "https://eportal.nutc.edu.tw/login_main.php#nutc-portal-bridge=login";
+
 const moduleGrid = document.querySelector("#moduleGrid");
+const loginButton = document.querySelector("#loginButton");
+const sessionLoginButton = document.querySelector("#sessionLoginButton");
 const portalStatusDot = document.querySelector("#portalStatusDot");
 const portalStatusTitle = document.querySelector("#portalStatusTitle");
 const portalStatusDetail = document.querySelector("#portalStatusDetail");
-
-const browserDialog = document.querySelector("#browserDialog");
-const browserStatusDot = document.querySelector("#browserStatusDot");
-const browserStatusText = document.querySelector("#browserStatusText");
-const browserHome = document.querySelector("#browserHome");
-const browserClose = document.querySelector("#browserClose");
-const browserDone = document.querySelector("#browserDone");
-const novncFrame = document.querySelector("#novncFrame");
-const novncLoading = document.querySelector("#novncLoading");
 
 const statusDialog = document.querySelector("#statusDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
@@ -25,29 +22,19 @@ const icons = {
   "book-open-check": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5a3 3 0 0 1 3-3h6v18H5a3 3 0 0 0-3 2V5zM22 5a3 3 0 0 0-3-3h-6v18h6a3 3 0 0 1 3 2V5zM15 11l2 2 3-4"/></svg>`,
 };
 
-let browserStatusTimer = null;
-let runtime = {
-  platform: "unknown",
-  arch: "unknown",
-  loginUiMode: "host",
-  noVncEnabled: false,
-};
+let authWindow = null;
+let authWindowTimer = null;
+let pendingModulePath = null;
+let authState = "unknown";
 
-async function api(path, options = {}) {
+async function api(path) {
   const response = await fetch(path, {
     credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {}),
-    },
-    ...options,
+    headers: { Accept: "application/json" },
   });
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || `Request failed (${response.status})`);
-  }
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
 
@@ -57,47 +44,132 @@ function showDialog(title, message) {
   if (typeof statusDialog.showModal === "function") statusDialog.showModal();
 }
 
-function applyPortalStatus(status) {
-  const loggedIn = Boolean(status?.loggedIn);
-  portalStatusDot.className = `status-dot ${loggedIn ? "valid" : "invalid"}`;
-  portalStatusTitle.textContent = loggedIn ? "ePortal 已登入" : "ePortal 尚未登入";
+function setAuthState(state, detail) {
+  authState = state;
+  portalStatusDot.className = `status-dot ${state}`;
 
-  if (loggedIn) {
-    portalStatusDetail.textContent = "persistent Chromium session 可直接產生新的 SSO。";
-  } else if (runtime.noVncEnabled) {
-    portalStatusDetail.textContent = "可直接在 Dashboard 內開啟官方 ePortal 登入畫面。";
-  } else {
-    portalStatusDetail.textContent = "登入會開在主機桌面；可設定 noVNC bridge 取得內嵌遠端畫面。";
+  if (state === "valid") {
+    portalStatusTitle.textContent = "ePortal 已確認登入";
+    portalStatusDetail.textContent =
+      detail || "目前瀏覽器已完成官方 ePortal 登入，可直接使用各系統。";
+    sessionStorage.setItem("nutcPortalVerifiedAt", String(Date.now()));
+    return;
   }
 
-  browserStatusDot.className = `status-dot ${loggedIn ? "valid" : "invalid"}`;
-  browserStatusText.textContent = loggedIn
-    ? "已偵測到 ePortal 登入狀態。"
-    : "請在 Chromium 中完成官方 ePortal 登入。";
+  if (state === "checking") {
+    portalStatusTitle.textContent = "正在等待 ePortal";
+    portalStatusDetail.textContent =
+      detail || "請在剛開啟的官方 ePortal 視窗完成登入。";
+    return;
+  }
+
+  if (state === "invalid") {
+    portalStatusTitle.textContent = "ePortal 登入未完成";
+    portalStatusDetail.textContent =
+      detail || "重新點擊登入或系統卡片即可再試一次。";
+    return;
+  }
+
+  portalStatusTitle.textContent = "ePortal 尚未檢查";
+  portalStatusDetail.textContent =
+    detail || "點登入或任一系統卡片即可檢查。";
 }
 
-async function refreshPortalStatus() {
-  try {
-    const status = await api("/api/browser/status");
-    applyPortalStatus(status);
-  } catch {
-    portalStatusDot.className = "status-dot invalid";
-    portalStatusTitle.textContent = "無法讀取 ePortal session";
-    portalStatusDetail.textContent = "請先執行 npm run doctor 檢查目前系統環境。";
+function closeAuthTracking() {
+  if (authWindowTimer) {
+    clearInterval(authWindowTimer);
+    authWindowTimer = null;
   }
+}
+
+function startAuthWindowWatch() {
+  closeAuthTracking();
+
+  authWindowTimer = setInterval(() => {
+    if (!authWindow) return;
+
+    if (authWindow.closed) {
+      closeAuthTracking();
+      authWindow = null;
+
+      if (authState !== "valid") {
+        pendingModulePath = null;
+        setAuthState(
+          "invalid",
+          "登入視窗已關閉，但 Dashboard 沒有收到成功通知。請確認 Bridge Extension 已載入。",
+        );
+      }
+    }
+  }, 500);
+}
+
+function openAuthFlow(modulePath = null) {
+  pendingModulePath = modulePath;
+  setAuthState(
+    "checking",
+    modulePath
+      ? "先確認 ePortal 登入；成功後會自動繼續開啟你剛才選的系統。"
+      : "請在官方 ePortal 視窗完成登入；成功後狀態會自動更新。",
+  );
+
+  authWindow = window.open(
+    EPORTAL_LOGIN,
+    "nutcEportalAuth",
+    "popup=yes,width=1100,height=820,resizable=yes,scrollbars=yes",
+  );
+
+  if (!authWindow) {
+    pendingModulePath = null;
+    setAuthState("unknown");
+    showDialog(
+      "瀏覽器阻擋了登入視窗",
+      "請允許這個 Dashboard 開啟 popup，然後再點一次「檢查 / 登入 ePortal」。",
+    );
+    return;
+  }
+
+  authWindow.focus();
+  startAuthWindowWatch();
+}
+
+function continueAfterLogin() {
+  const targetPath = pendingModulePath;
+  pendingModulePath = null;
+
+  if (targetPath && authWindow && !authWindow.closed) {
+    const targetUrl = new URL(targetPath, window.location.origin).toString();
+    authWindow.location.href = targetUrl;
+    authWindow = null;
+    closeAuthTracking();
+    return;
+  }
+
+  if (authWindow && !authWindow.closed) {
+    authWindow.close();
+  }
+
+  authWindow = null;
+  closeAuthTracking();
+}
+
+function handleBridgeMessage(event) {
+  if (event.origin !== EPORTAL_ORIGIN) return;
+  if (!event.data || event.data.source !== "nutc-portal-bridge") return;
+  if (event.data.type !== "auth-status" || event.data.loggedIn !== true) return;
+
+  setAuthState("valid", "Bridge 已確認目前瀏覽器的 ePortal 登入狀態。");
+  continueAfterLogin();
 }
 
 function renderModules(modules) {
   moduleGrid.replaceChildren();
 
   for (const module of modules) {
-    const card = document.createElement("a");
-    card.className = "module-card focus-ring";
-    card.href = module.launchPath;
-    card.target = "_blank";
-    card.rel = "noopener";
-    card.style.setProperty("--module-color", module.sourceColor);
-    card.setAttribute("aria-label", `開啟 ${module.name}`);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "module-card focus-ring";
+    button.style.setProperty("--module-color", module.sourceColor);
+    button.setAttribute("aria-label", `開啟 ${module.name}`);
 
     const icon = document.createElement("span");
     icon.className = "module-icon";
@@ -114,110 +186,44 @@ function renderModules(modules) {
 
     const launch = document.createElement("span");
     launch.className = "module-launch";
-    launch.innerHTML = `<span>由共用 ePortal session 產生 SSO</span><span aria-hidden="true">↗</span>`;
+    launch.innerHTML =
+      `<span>使用目前瀏覽器的 ePortal session</span><span aria-hidden="true">↗</span>`;
 
     copy.append(title, description, launch);
-    card.append(icon, copy);
-    moduleGrid.append(card);
-  }
-}
+    button.append(icon, copy);
 
-function noVncUrl() {
-  const params = new URLSearchParams({
-    autoconnect: "true",
-    reconnect: "true",
-    resize: "scale",
-    path: "novnc/websockify",
-  });
-  return `/novnc/vnc.html?${params.toString()}`;
-}
+    button.addEventListener("click", () => {
+      if (authState === "valid") {
+        window.open(module.launchPath, "_blank", "noopener");
+        return;
+      }
 
-function hostLoginMessage() {
-  const names = {
-    darwin: "macOS",
-    win32: "Windows",
-    linux: "Linux",
-  };
-  const platformName = names[runtime.platform] || runtime.platform;
-  return `官方 ePortal 已開在 ${platformName} 主機上的 persistent Chromium。完成登入後，這個 session 會同時給 SSO 與背景抓取使用。若要從遠端直接操作登入畫面，設定 PORTAL_NOVNC_TARGET 或使用支援的 noVNC runtime。`;
-}
-
-async function openIntegratedLogin() {
-  try {
-    const result = await api("/api/browser/open", {
-      method: "POST",
-      body: "{}",
+      openAuthFlow(module.launchPath);
     });
 
-    applyPortalStatus(result);
-
-    if (!runtime.noVncEnabled) {
-      showDialog("ePortal 已在主機上開啟", hostLoginMessage());
-      return;
-    }
-
-    novncLoading.classList.remove("hidden");
-    browserStatusDot.className = "status-dot checking";
-    browserStatusText.textContent = "正在連線到 persistent Chromium…";
-
-    if (typeof browserDialog.showModal === "function" && !browserDialog.open) {
-      browserDialog.showModal();
-    }
-
-    const nextSrc = noVncUrl();
-    if (novncFrame.getAttribute("src") !== nextSrc) {
-      novncFrame.src = nextSrc;
-    }
-
-    clearInterval(browserStatusTimer);
-    browserStatusTimer = setInterval(refreshPortalStatus, 2000);
-  } catch (error) {
-    showDialog("無法開啟 ePortal", error.message);
-    if (browserDialog.open) browserDialog.close();
+    moduleGrid.append(button);
   }
 }
 
-function closeIntegratedLogin() {
-  clearInterval(browserStatusTimer);
-  browserStatusTimer = null;
-  if (browserDialog.open) browserDialog.close();
-  refreshPortalStatus();
-}
-
-for (const button of document.querySelectorAll("[data-open-eportal]")) {
-  button.addEventListener("click", openIntegratedLogin);
-}
-
-browserHome.addEventListener("click", async () => {
-  try {
-    browserStatusDot.className = "status-dot checking";
-    browserStatusText.textContent = "正在重新開啟官方 ePortal…";
-    const result = await api("/api/browser/open", { method: "POST", body: "{}" });
-    applyPortalStatus(result);
-  } catch (error) {
-    showDialog("無法重新開啟 ePortal", error.message);
-  }
-});
-
-browserClose.addEventListener("click", closeIntegratedLogin);
-browserDone.addEventListener("click", closeIntegratedLogin);
-
-novncFrame.addEventListener("load", () => {
-  novncLoading.classList.add("hidden");
-});
-
+loginButton.addEventListener("click", () => openAuthFlow());
+sessionLoginButton.addEventListener("click", () => openAuthFlow());
+window.addEventListener("message", handleBridgeMessage);
 dialogClose.addEventListener("click", () => statusDialog.close());
 
 (async () => {
   try {
-    const [{ modules }, serverStatus] = await Promise.all([
-      api("/api/modules"),
-      api("/api/server/status"),
-    ]);
-
-    runtime = { ...runtime, ...serverStatus };
+    const { modules } = await api("/api/modules");
     renderModules(modules);
-    await refreshPortalStatus();
+
+    const lastVerified = Number(sessionStorage.getItem("nutcPortalVerifiedAt") || 0);
+    if (lastVerified && Date.now() - lastVerified < 30 * 60 * 1000) {
+      setAuthState(
+        "unknown",
+        "這個 Dashboard 分頁最近曾確認登入；重新點擊卡片時會在需要時再次走官方登入。",
+      );
+    } else {
+      setAuthState("unknown");
+    }
   } catch (error) {
     showDialog("載入失敗", error.message);
   }
