@@ -164,12 +164,49 @@ function finishAuthCheck() {
   closeAuthTracking();
 }
 
+async function syncPreferences(preferences) {
+  if (!preferences || typeof preferences !== "object") return;
+
+  try {
+    const response = await fetch("/api/sync", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(preferences),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Preference sync failed (${response.status})`);
+    }
+  } catch (error) {
+    console.warn("Preference sync failed:", error?.message || error);
+  }
+}
+
+function decodePreferences(raw) {
+  if (!raw) return null;
+
+  try {
+    const base64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
 function handleBridgeMessage(event) {
   if (event.origin !== EPORTAL_ORIGIN) return;
   if (!event.data || event.data.source !== USERSCRIPT_SOURCE) return;
   if (event.data.type !== "auth-status" || event.data.loggedIn !== true) return;
   if (!pendingNonce || event.data.nonce !== pendingNonce) return;
 
+  void syncPreferences(event.data.preferences);
   setAuthState("valid", "Userscript 已確認目前瀏覽器的 ePortal session 仍有效。");
   finishAuthCheck();
 }
@@ -178,9 +215,16 @@ function consumeMobileReturn() {
   const url = new URL(window.location.href);
   if (url.searchParams.get("eportalAuth") !== "ok") return false;
 
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  const preferences = decodePreferences(hash.get("nutc-sync"));
+
   url.searchParams.delete("eportalAuth");
   url.searchParams.delete("nonce");
+  hash.delete("nutc-sync");
+  url.hash = hash.toString();
   history.replaceState(null, "", url.pathname + url.search + url.hash);
+
+  if (preferences) void syncPreferences(preferences);
 
   setAuthState(
     "valid",
