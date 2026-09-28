@@ -1,0 +1,24 @@
+# Authentication/session state - never commit
+eportal-auth-state.json
+*.auth.json
+
+# Playwright/browser state
+playwright/.auth/
+user-data-dir/
+.eportal-profile/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated output
+output/
+*.html
+*.json.tmp
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
