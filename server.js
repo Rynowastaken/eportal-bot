@@ -1,6 +1,7 @@
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import httpProxy from "http-proxy";
 import { PortalBrowserSession } from "./src/browser-session.js";
@@ -12,21 +13,28 @@ const publicDir = path.join(__dirname, "public");
 const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
+const loginUiMode = String(process.env.PORTAL_LOGIN_MODE || "host").toLowerCase();
+const noVncTarget = String(process.env.PORTAL_NOVNC_TARGET || "").trim();
+const noVncEnabled = loginUiMode === "novnc" && Boolean(noVncTarget);
 const browserSession = new PortalBrowserSession();
 
-const noVncProxy = httpProxy.createProxyServer({
-  target: "http://127.0.0.1:6080",
-  ws: true,
-});
+const noVncProxy = noVncEnabled
+  ? httpProxy.createProxyServer({
+      target: noVncTarget,
+      ws: true,
+    })
+  : null;
 
-noVncProxy.on("error", (error, req, resOrSocket) => {
-  console.error("noVNC proxy error:", error.message);
-  if (resOrSocket?.writeHead) {
-    sendError(resOrSocket, 502, "noVNC is not available.");
-  } else {
-    resOrSocket?.destroy?.();
-  }
-});
+if (noVncProxy) {
+  noVncProxy.on("error", (error, req, resOrSocket) => {
+    console.error("noVNC proxy error:", error.message);
+    if (resOrSocket?.writeHead) {
+      sendError(resOrSocket, 502, "noVNC is not available.");
+    } else {
+      resOrSocket?.destroy?.();
+    }
+  });
+}
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -172,6 +180,11 @@ async function serveStatic(res, pathname) {
 }
 
 function proxyNoVncHttp(req, res) {
+  if (!noVncProxy) {
+    sendError(res, 404, "Embedded noVNC login is not enabled on this runtime.");
+    return;
+  }
+
   req.url = req.url.slice("/novnc".length) || "/";
   noVncProxy.web(req, res);
 }
@@ -180,8 +193,12 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/server/status") {
     sendJson(res, 200, {
       startedAt: serverStartedAt,
+      platform: process.platform,
+      arch: process.arch,
       authMode: "cloudflare-access",
-      eportalSessionMode: "persistent-playwright-novnc",
+      eportalSessionMode: "persistent-playwright",
+      loginUiMode,
+      noVncEnabled,
     });
     return;
   }
@@ -199,7 +216,11 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/browser/open") {
     assertSameSiteMutation(req);
     await parseJsonBody(req);
-    sendJson(res, 200, await browserSession.openLogin());
+    sendJson(res, 200, {
+      ...(await browserSession.openLogin()),
+      loginUiMode,
+      noVncEnabled,
+    });
     return;
   }
 
@@ -236,7 +257,7 @@ async function handleModuleLaunch(res, moduleId) {
   <h1 style="font-size:1.3rem">無法開啟校務系統</h1>
   <p style="color:#c7bdc7">${escapeHtml(
     loginRequired
-      ? "請回到 NUTC Portal，開啟整合式 ePortal 登入並先完成官方登入。"
+      ? "請回到 NUTC Portal，先完成官方 ePortal 登入。"
       : message,
   )}</p>
 </body>`,
@@ -280,7 +301,7 @@ const server = http.createServer(async (req, res) => {
 server.on("upgrade", (req, socket, head) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-    if (!url.pathname.startsWith("/novnc/")) {
+    if (!noVncProxy || !url.pathname.startsWith("/novnc/")) {
       socket.destroy();
       return;
     }
@@ -295,13 +316,13 @@ server.on("upgrade", (req, socket, head) => {
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
   console.log("Dashboard authentication: delegated to Cloudflare Access.");
-  console.log("ePortal session: one headed persistent Playwright Chromium profile.");
-  console.log("Remote login UI: noVNC proxied at /novnc/.");
+  console.log(`ePortal login UI: ${loginUiMode}`);
+  console.log("ePortal session: one persistent Playwright Chromium profile.");
 });
 
 async function shutdown() {
   await browserSession.close().catch(() => {});
-  noVncProxy.close();
+  noVncProxy?.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3_000).unref();
 }
