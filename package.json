@@ -1,9 +1,9 @@
 {
   "name": "eportal-bot",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
-  "description": "Personal NUTC dashboard and ePortal SSO launcher powered by Playwright.",
+  "description": "Cloudflare Access protected NUTC dashboard with browser-native ePortal SSO and Playwright background automation.",
   "scripts": {
     "start": "node server.js",
     "login": "node eportal_bot.js login",
