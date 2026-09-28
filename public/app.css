@@ -578,3 +578,222 @@ footer {
     animation-iteration-count: 1 !important;
   }
 }
+
+
+.hidden {
+  display: none !important;
+}
+
+.status-dot.checking {
+  background: var(--accent);
+  animation: status-pulse 1.1s ease-in-out infinite alternate;
+}
+
+.status-dot.valid {
+  background: var(--success);
+}
+
+.status-dot.invalid {
+  background: var(--danger);
+}
+
+@keyframes status-pulse {
+  to {
+    opacity: 0.45;
+    transform: scale(0.84);
+  }
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--foreground);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--glass-border-hi);
+}
+
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.browser-dialog {
+  width: min(96vw, 1280px);
+  max-width: none;
+  height: min(94vh, 940px);
+  max-height: none;
+  padding: 0;
+  color: var(--foreground);
+  background: transparent;
+  border: 0;
+}
+
+.browser-dialog::backdrop {
+  background: rgba(5, 4, 7, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.browser-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 0.9rem;
+  border-radius: 18px;
+}
+
+.browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.1rem 0.1rem 0.8rem;
+}
+
+.browser-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.browser-heading h2 {
+  margin: 0.12rem 0 0;
+  font-size: 1rem;
+}
+
+.browser-heading > div > p:last-child {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.browser-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.novnc-shell {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: #080709;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+}
+
+.novnc-shell iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  background: #111;
+  border: 0;
+}
+
+.browser-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--fg-secondary);
+  background: rgba(10, 8, 12, 0.82);
+  backdrop-filter: blur(8px);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--primary);
+  border-radius: 999px;
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.browser-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.15rem 0.05rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.done-button {
+  min-height: 40px;
+  padding: 0.55rem 0.9rem;
+  color: #21151d;
+  cursor: pointer;
+  background: var(--primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 11px;
+  font-weight: 760;
+}
+
+.done-button:hover {
+  background: #f6b7d3;
+}
+
+code {
+  color: var(--fg-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 639px) {
+  .browser-dialog {
+    width: 100vw;
+    height: 100dvh;
+    margin: 0;
+  }
+
+  .browser-card {
+    border-radius: 0;
+    padding: 0.65rem;
+  }
+
+  .browser-heading > div > p:last-child {
+    display: none;
+  }
+
+  .novnc-shell iframe {
+    min-height: 0;
+  }
+
+  .browser-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .done-button {
+    width: 100%;
+  }
+}
