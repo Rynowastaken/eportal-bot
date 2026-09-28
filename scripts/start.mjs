@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
@@ -16,20 +16,47 @@ const env = { ...process.env };
 const children = [];
 
 function commandPath(command) {
-  const lookup = platform === "win32" ? "where" : "which";
-  const result = spawnSync(lookup, [command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  if (!command) return null;
 
-  if (result.status !== 0) return null;
+  const hasSeparator = command.includes("/") || command.includes("\\");
+  if (hasSeparator) {
+    return executableExists(command) ? path.resolve(command) : null;
+  }
 
-  const first = String(result.stdout || "")
-    .split(/\r?\n/)
+  const pathEntries = String(env.PATH || "")
+    .split(path.delimiter)
     .map((value) => value.trim())
-    .find(Boolean);
+    .filter(Boolean);
 
-  return first || null;
+  const extensions =
+    platform === "win32"
+      ? String(env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
+          .split(";")
+          .filter(Boolean)
+      : [""];
+
+  for (const directory of pathEntries) {
+    for (const extension of extensions) {
+      const candidate =
+        platform === "win32" && !command.toLowerCase().endsWith(extension.toLowerCase())
+          ? path.join(directory, `${command}${extension}`)
+          : path.join(directory, command);
+
+      try {
+        const stat = fs.statSync(candidate);
+        if (!stat.isFile()) continue;
+
+        if (platform === "win32") return candidate;
+
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return candidate;
+      } catch {
+        // Keep looking through PATH.
+      }
+    }
+  }
+
+  return null;
 }
 
 function commandExists(command) {
