@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=8" />
+    <link rel="stylesheet" href="/app.css?v=9" />
   </head>
   <body>
     <main class="app-shell">
@@ -26,11 +26,11 @@
 
       <section class="hero glass">
         <div class="hero-copy">
-          <p class="eyebrow">CLIENT BROWSER SESSION</p>
-          <h2>登入只發生在你現在使用的瀏覽器。</h2>
+          <p class="eyebrow">DUAL ePORTAL SESSION</p>
+          <h2>Server 與目前瀏覽器各自維持獨立 ePortal session。</h2>
           <p>
-            Dashboard 不再啟動 host Chromium，也不持有 ePortal cookie。
-            官方 ePortal 會在目前瀏覽器開啟；登入成功後，Userscript 會自動通知這個頁面並更新狀態。
+            Server 使用 .eportal-profile/ 的 Playwright persistent profile，供排程與背景抓取使用。
+            目前瀏覽器仍可透過 Userscript 獨立檢查登入與直接開啟校務系統；兩邊不交換 cookie。
           </p>
         </div>
 
@@ -52,6 +52,14 @@
             自動登入偵測使用 NUTC Portal Userscript。
             <a class="inline-link focus-ring" href="/userscript/nutc-portal.user.js">安裝 / 更新 Userscript</a>
           </p>
+
+          <div class="session-head server-session-head">
+            <span id="serverPortalStatusDot" class="status-dot idle"></span>
+            <div>
+              <strong id="serverPortalStatusTitle">Server ePortal 尚未檢查</strong>
+              <small id="serverPortalStatusDetail">正在讀取 .eportal-profile/ 狀態。</small>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -74,7 +82,7 @@
           </span>
           <div>
             <strong>Cloudflare Access 保護 Dashboard</strong>
-            <p>應用程式不再提供第二層 PIN，也不需要 server-side browser。</p>
+            <p>Dashboard 本身由 Cloudflare Access 保護；server-side Chromium 只用於獨立 ePortal session 與背景工作。</p>
           </div>
         </article>
 
@@ -83,15 +91,15 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14M4 4h16v16H4z"/></svg>
           </span>
           <div>
-            <strong>Client-side ePortal session</strong>
-            <p>ePortal cookie 留在使用者瀏覽器；NUTC Portal server 不會讀取或保存學校登入憑證。</p>
+            <strong>Session 完全分離</strong>
+            <p>Server cookie 只留在 .eportal-profile/；client cookie 只留在目前瀏覽器。Userscript 不會把 cookie 傳給 server。</p>
           </div>
         </article>
       </section>
 
       <footer>
         <span>NUTC Portal · Personal self-hosted dashboard</span>
-        <span>Cloudflare Access · Client browser ePortal SSO</span>
+        <span>Cloudflare Access · Server Playwright + Client ePortal SSO</span>
       </footer>
     </main>
 
@@ -106,6 +114,6 @@
       </section>
     </dialog>
 
-    <script src="/app.js?v=8" type="module"></script>
+    <script src="/app.js?v=9" type="module"></script>
   </body>
 </html>
