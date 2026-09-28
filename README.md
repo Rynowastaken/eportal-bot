@@ -2,19 +2,49 @@
 
 個人自架的國立臺中科技大學校園 Dashboard。
 
-這個專案不做假的學校帳密登入頁；官方 ePortal 仍負責真正的身分驗證。第一次人工登入後，樹莓派保存 Playwright `storage_state`，之後由自架 Dashboard 為每個模組即時取得新的短效 SSO ticket。
+Web 入口預期放在 **Cloudflare Access** 後方，因此應用程式本身不再提供第二層 PIN / 密碼登入畫面。
+
+互動式校務登入也不再使用伺服器端 Playwright：你會在**目前正在使用的瀏覽器**直接登入官方 ePortal，ePortal cookie 留在該瀏覽器裡。之後點 Dashboard 的卡片，瀏覽器會先進入官方 ePortal 模組入口，再由官方 SSO 前往 AIS / WebMail / 活動 / EP / TronClass。
 
 ## UI / architecture
 
-Web UI 直接參考同帳號的 [Rynowastaken/budget](https://github.com/Rynowastaken/budget)：
+Web UI 延續同帳號 [Rynowastaken/budget](https://github.com/Rynowastaken/budget) 的方式：
 
 - plain Node.js server
 - 不需要 frontend build step
 - dark glass / blur interface
 - pink / gold accent
 - mobile-first responsive layout
-- local access-code login
 - 原生 HTML / CSS / JS
+- Dashboard authentication delegated to Cloudflare Access
+
+## Interactive web flow
+
+```text
+Browser
+  ↓
+Cloudflare Access
+  ↓
+NUTC Portal Dashboard
+  ↓
+「登入 ePortal」→ official ePortal in another tab of the same browser
+  ↓
+browser receives ePortal cookies
+  ↓
+Dashboard module card
+  ↓
+/go/:module
+  ↓
+302 → official ePortal module path
+  ↓
+browser automatically sends its own ePortal cookies
+  ↓
+official SSO → AIS / WebMail / Activity / EP / TronClass
+```
+
+Dashboard server 不讀取、不複製、不保存瀏覽器的 ePortal cookie。
+
+如果模組把你導回 ePortal 登入頁，只要完成官方登入，再回 Dashboard 點一次即可。
 
 ## 從 ePortal 附件解析出的入口
 
@@ -26,8 +56,6 @@ Web UI 直接參考同帳號的 [Rynowastaken/budget](https://github.com/Rynowas
 | 學生學習歷程（EP） | `/ext_module/ext_set_param.php?mod_id=_OSL256_pmabVqSXTYna294Vl9JLJg` |
 | TronClass | `/ext_module/ext_set_param.php?mod_id=_OSL256_OBbFAusuXIjtGB-G8RS4gQ` |
 
-這些只是 ePortal 的入口，不是要長期保存的登入 token。
-
 ## 安裝
 
 需要 Node.js 18+：
@@ -37,70 +65,94 @@ npm install
 npx playwright install chromium
 ```
 
-## 第一次登入官方 ePortal
+Playwright 只用於後面的背景自動化 / 課表抓取；純 Web Dashboard launcher 本身不需要用 Playwright 開另一個瀏覽器。
 
-```bash
-npm run login
-```
-
-Chromium 會打開官方 ePortal。你正常登入後，程式偵測到「學生管理系統」按鈕就會保存：
-
-```text
-eportal-auth-state.json
-```
-
-這個檔案視同 session credential，已被 `.gitignore` 排除。
-
-## 啟動自架 Dashboard
+## 啟動 Dashboard
 
 ```bash
 npm start
 ```
 
-預設：
+預設只監聽：
 
 ```text
-http://localhost:4173
+127.0.0.1:4173
 ```
 
-如果沒有設定 `DASHBOARD_PIN`，server 啟動時會印出新的 6 位數本機存取碼。若要固定：
+這個預設特別適合同一台 Raspberry Pi 上的 Cloudflare Tunnel：
+
+```text
+Cloudflare Access
+      ↓
+Cloudflare Tunnel
+      ↓
+http://127.0.0.1:4173
+```
+
+如果 `cloudflared` 在另一個 container / host，需要讓 LAN/container network 存取 Node server，可以明確設定：
 
 ```bash
-DASHBOARD_PIN='你的本機存取碼' npm start
+HOST=0.0.0.0 npm start
 ```
 
-## SSO launcher
+這時請確保 firewall / container network 不會繞過 Cloudflare Access 直接公開 origin。
 
-點擊 Dashboard 中的模組時：
+## Cloudflare Access
 
-1. server 載入 Playwright storage state。
-2. 確認 ePortal login 還有效。
-3. 進入該模組的官方 ePortal path。
-4. 攔截即將離開 `eportal.nutc.edu.tw` 的 top-level navigation。
-5. 在 Playwright 真正消耗 ticket 前先中止 external navigation。
-6. 將一次性 HTTPS SSO navigation 只回給當下瀏覽器。
-7. 由你的瀏覽器真正進入 AIS / WebMail / 活動 / EP / TronClass。
+應用程式本身**不驗證 Cloudflare JWT**；它假設只有通過 Access 的流量能到達 origin。
 
-目前 launcher 支援 GET navigation，以及 `application/x-www-form-urlencoded` POST navigation。
+因此請至少做到其中一種：
 
-短效 JWT / SSO ticket 不寫檔、不 commit，也不刻意輸出到 server console。
+- Cloudflare Tunnel 直接連 `127.0.0.1:4173`
+- firewall 阻擋公開 origin port
+- private container network，只允許 cloudflared 到 Node server
 
-> 五個目標系統仍需在你的實際帳號環境逐一驗證，因為各系統可能有不同的 SSO 行為。
+不要同時把 Raspberry Pi 的 `4173` port 直接暴露到 Internet。
 
-## AIS endpoint 抓取
+## 瀏覽器登入 ePortal
 
-原本的 authenticated request 功能保留：
+Dashboard 右上角以及首頁都有：
+
+```text
+登入 ePortal
+```
+
+按下後會在目前瀏覽器的新分頁打開：
+
+```text
+https://eportal.nutc.edu.tw/
+```
+
+正常完成官方登入即可。這個網站不會看到你的 ePortal 帳密。
+
+接著回 Dashboard 點任何模組卡片；`/go/:module` 只做 server-side 302 redirect 到官方 ePortal path，因此真正帶 cookie / 完成 SSO 的仍然是你的瀏覽器。
+
+## 背景自動化 / 課表爬取
+
+這部分與互動式 Web session **刻意分離**。
+
+樹莓派若需要每天自動抓課表，仍然使用 Playwright 自己的 `storage_state`：
+
+```bash
+npm run login
+```
+
+這會開 Playwright Chromium，讓你做一次人工登入，並保存：
+
+```text
+eportal-auth-state.json
+```
+
+之後背景 job 才可以：
 
 ```bash
 node eportal_bot.js run \
   --fetch-url 'https://ais.nutc.edu.tw/student/REPLACE_WITH_TIMETABLE_ENDPOINT'
 ```
 
-response body 會存到 `output/authenticated_response.bin`，metadata 存到 `output/authenticated_response.json`。敏感 response headers 與疑似 token query value 不會寫入 metadata。
+這個 Playwright session **不是** Web Dashboard 的互動式 session；兩者不需要互相複製 cookie。
 
 ## Security
-
-不要直接把這個服務裸露在公網。建議使用 Raspberry Pi + Tailscale / WireGuard，或 HTTPS reverse proxy 加額外 access control。
 
 永遠不要 commit：
 
@@ -111,15 +163,17 @@ response body 會存到 `output/authenticated_response.bin`，metadata 存到 `o
 - `PUBLIC_APP_USER_SSO_TOKEN`
 - browser profile
 
+互動式 Dashboard 不會保存學校 token。Playwright storage state 只供 Raspberry Pi 背景自動化使用。
+
 ## 主要檔案
 
 ```text
-server.js            Web server / Dashboard authentication
-src/eportal.js       ePortal state + multi-module SSO launcher
+server.js            Static server, API and /go/:module redirects
+src/eportal.js       Module definitions + Playwright automation helpers
 public/index.html    Dashboard structure
 public/app.css       Budget-inspired glass UI
-public/app.js        Frontend behavior
-eportal_bot.js       CLI login / AIS fetch helper
+public/app.js        Module-card rendering
+eportal_bot.js       Playwright CLI for background automation
 ```
 
 syntax check：
@@ -128,4 +182,4 @@ syntax check：
 npm run check
 ```
 
-下一步是分析 AIS 課表 Network endpoint，然後把 Dashboard 從 SSO launcher 擴充成真正的資料首頁：今日課表、TronClass 作業、校務信、活動與 EP 摘要。
+下一步是分析 AIS 課表 Network endpoint，然後把背景爬蟲結果顯示成 Dashboard 的「今日課表」資料卡。
