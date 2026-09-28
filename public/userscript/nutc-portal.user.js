@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal Bridge
 // @namespace    https://github.com/Rynowastaken/eportal-bot
-// @version      0.3.0
+// @version      0.3.1
 // @description  Detect official NUTC ePortal login and notify the NUTC Portal dashboard.
 // @author       Rynowastaken
 // @match        https://eportal.nutc.edu.tw/*
@@ -23,10 +23,20 @@
 
   let lastNotification = null;
 
-  const SENSITIVE_KEY =
-    /(^|[_:.-])(auth|token|cookie|session|jwt|secret|password|passwd|credential|sso|csrf|xsrf|aspnet|asp\.net)([_:.-]|$)/i;
+  const SENSITIVE_KEYS = new Set([
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "auth_token",
+    "public_app_user_sso_token",
+    "asp.net_sessionid",
+  ]);
   const PREFERENCE_KEY =
-    /(^|[_:.-])(theme|layout|ui|pref|preference|setting|settings|locale|language|lang|sidebar|dashboard|display|density|compact|sort|order|view|color|font|mode)([_:.-]|$)/i;
+    /(^|[_:.-])(theme|layout|ui|pref|preference|setting|settings|locale|language|lang|sidebar|dashboard|display|density|compact|sort|order|view|color|font|mode|size|widget|card|profile)([_:.-]|$)/i;
+
+  function isSensitiveKey(key) {
+    return SENSITIVE_KEYS.has(String(key).toLowerCase());
+  }
 
   function collectPreferenceBucket(storage) {
     const output = {};
@@ -35,7 +45,7 @@
       for (let index = 0; index < storage.length; index += 1) {
         const key = storage.key(index);
         if (!key || key.length > 128) continue;
-        if (SENSITIVE_KEY.test(key) || !PREFERENCE_KEY.test(key)) continue;
+        if (isSensitiveKey(key) || !PREFERENCE_KEY.test(key)) continue;
 
         const value = storage.getItem(key);
         if (typeof value !== "string" || value.length > 8192) continue;
