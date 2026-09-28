@@ -7,11 +7,12 @@ playwright/.auth/
 user-data-dir/
 .eportal-profile/
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Generated output
 output/
