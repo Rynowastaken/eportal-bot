@@ -1,10 +1,8 @@
 # NUTC Portal
 
-自架的國立臺中科技大學個人 Dashboard。ePortal 登入與 SSO 全部使用**使用者目前的瀏覽器 session**；Server 不啟動瀏覽器，也不保存學校登入 cookie。
+自架的國立臺中科技大學個人 Dashboard。ePortal 登入與 SSO 都使用**使用者目前的瀏覽器 session**；Server 不啟動瀏覽器，也不保存學校登入 cookie。
 
 ## Quick start
-
-需要 Node.js 18+。
 
 ```bash
 npm install
@@ -14,17 +12,22 @@ npm start
 
 Dashboard 預期放在 Cloudflare Access 後方。
 
-若要讓 Dashboard 在官方 ePortal 登入成功後自動更新狀態並接續開啟模組，載入 repo 內的 `extension/` WebExtension。詳細方式見 [docs/client-login.md](docs/client-login.md)。
+登入狀態橋接使用 repo 內的 userscript：
+
+```text
+/userscript/nutc-portal.user.js
+```
+
+安裝與手機流程見 [docs/userscript.md](docs/userscript.md)。
 
 ## Flow
 
 ```text
 Client browser
   → official ePortal login
-  → ePortal cookie stays in that browser
-  → NUTC Portal /go/:module
+  → Userscript confirms login
+  → Dashboard continues /go/:module
   → official ePortal SSO
-  → AIS / WebMail / 活動 / EP / TronClass
 ```
 
 ## Security
