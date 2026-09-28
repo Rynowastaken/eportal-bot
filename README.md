@@ -1,8 +1,6 @@
 # NUTC Portal
 
-自架的國立臺中科技大學個人 Dashboard，使用 **單一 persistent Playwright Chromium profile** 共用 ePortal 登入、各系統 SSO 與後續課表/API 抓取。
-
-介面風格延續 [Rynowastaken/budget](https://github.com/Rynowastaken/budget)，Dashboard 預期放在 Cloudflare Access 後方。
+自架的國立臺中科技大學個人 Dashboard。ePortal 登入與 SSO 全部使用**使用者目前的瀏覽器 session**；Server 不啟動瀏覽器，也不保存學校登入 cookie。
 
 ## Quick start
 
@@ -10,45 +8,29 @@
 
 ```bash
 npm install
-npm run install-browser
 npm run doctor
 npm start
 ```
 
-`npm run doctor` 會先檢查目前 OS、CPU 架構、圖形環境、Chromium 與 noVNC/VNC 能力，再選擇可用的登入模式。
+Dashboard 預期放在 Cloudflare Access 後方。
 
-跨平台與 runtime 設定請看 [docs/platforms.md](docs/platforms.md)。
+若要讓 Dashboard 在官方 ePortal 登入成功後自動更新狀態並接續開啟模組，載入 repo 內的 `extension/` WebExtension。詳細方式見 [docs/client-login.md](docs/client-login.md)。
 
-## How it works
+## Flow
 
 ```text
-Cloudflare Access
-      ↓
-NUTC Portal
-      ↓
-persistent Chromium (.eportal-profile/)
-      ├─ official ePortal login
-      ├─ AIS / WebMail / 活動 / EP / TronClass SSO
-      └─ context.request → timetable/API
+Client browser
+  → official ePortal login
+  → ePortal cookie stays in that browser
+  → NUTC Portal /go/:module
+  → official ePortal SSO
+  → AIS / WebMail / 活動 / EP / TronClass
 ```
-
-只有 `.eportal-profile/` 保存 ePortal session；沒有第二份 `storage_state`，也沒有額外的 Dashboard PIN。
 
 ## Security
 
-不要 commit：
-
-- `.eportal-profile/`
-- cookies / JWT / SSO token
-- ASP.NET session
-- `PUBLIC_APP_USER_SSO_TOKEN`
-
-Cloudflare Tunnel 建議只連 NUTC Portal 的 HTTP origin，不要直接公開 VNC/noVNC backend。
-
-## Development
+不要 commit cookies、JWT、SSO token、ASP.NET session 或任何手動匯出的瀏覽器資料。
 
 ```bash
 npm run check
 ```
-
-下一步是接上 AIS 課表 Network endpoint，將課表直接顯示在 Dashboard。
