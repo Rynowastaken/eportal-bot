@@ -5,6 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, moduleUrl, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
+import { checkServerPortalStatus } from "./src/portal-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,9 +114,15 @@ const server = http.createServer(async (req, res) => {
         platform: process.platform,
         arch: process.arch,
         authMode: "cloudflare-access",
-        eportalSessionMode: "client-browser",
+        eportalSessionMode: "server-playwright-and-client-browser",
         eportalOrigin: EPORTAL_ORIGIN,
       });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/portal-status") {
+      const status = await checkServerPortalStatus();
+      sendJson(res, 200, status);
       return;
     }
 
