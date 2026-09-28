@@ -11,6 +11,23 @@ const ROOT = path.resolve(__dirname, "..");
 export const EPORTAL_PROFILE_DIR = path.join(ROOT, ".eportal-profile");
 export const STUDENT_BUTTON_SELECTOR = 'button[onclick*="NUTC_6401"]';
 
+let profileQueue = Promise.resolve();
+
+async function withProfileLock(task) {
+  const previous = profileQueue;
+  let release;
+  profileQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
+  }
+}
+
 async function profileExists() {
   try {
     const stat = await fs.stat(EPORTAL_PROFILE_DIR);
@@ -143,6 +160,95 @@ export async function openAisWithServerSession({ headless = true } = {}) {
     await context.close().catch(() => {});
     throw error;
   }
+}
+
+export async function fetchAisOverview({ timeout = 30_000 } = {}) {
+  return withProfileLock(async () => {
+    let session;
+
+    try {
+      session = await openAisWithServerSession({ headless: true });
+      const { page } = session;
+
+      await page.waitForLoadState("domcontentloaded", { timeout }).catch(() => {});
+      await page.waitForTimeout(1200);
+
+      const snapshot = await page.evaluate(() => {
+        const clean = (value) =>
+          String(value || "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        const visible = (element) => {
+          if (!(element instanceof Element)) return false;
+          const style = getComputedStyle(element);
+          if (style.display === "none" || style.visibility === "hidden") return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        };
+
+        const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")]
+          .filter(visible)
+          .map((element) => clean(element.textContent))
+          .filter(Boolean)
+          .slice(0, 40);
+
+        const tables = [...document.querySelectorAll("table")]
+          .filter(visible)
+          .slice(0, 12)
+          .map((table) => {
+            const caption = clean(table.querySelector("caption")?.textContent);
+            const rows = [...table.querySelectorAll("tr")]
+              .filter(visible)
+              .slice(0, 30)
+              .map((row) =>
+                [...row.querySelectorAll("th,td")]
+                  .filter(visible)
+                  .slice(0, 16)
+                  .map((cell) => clean(cell.textContent)),
+              )
+              .filter((row) => row.some(Boolean));
+
+            return { caption, rows };
+          })
+          .filter((table) => table.rows.length);
+
+        const bodyText = clean(document.body?.innerText)
+          .split(/(?<=[。！？!?])\s+|\n+/)
+          .map(clean)
+          .filter((text) => text.length >= 2 && text.length <= 240)
+          .slice(0, 80);
+
+        return {
+          title: clean(document.title),
+          headings,
+          tables,
+          text: bodyText,
+        };
+      });
+
+      return {
+        ok: true,
+        fetchedAt: new Date().toISOString(),
+        title: snapshot.title,
+        headings: snapshot.headings,
+        tables: snapshot.tables,
+        text: snapshot.text,
+      };
+    } catch (error) {
+      if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
+        const wrapped = new Error(error.message);
+        wrapped.statusCode = 503;
+        wrapped.code = "EPORTAL_LOGIN_REQUIRED";
+        throw wrapped;
+      }
+      throw error;
+    } finally {
+      if (session?.context) {
+        await session.context.close().catch(() => {});
+      }
+    }
+  });
 }
 
 export async function requireServerPortalSession() {
