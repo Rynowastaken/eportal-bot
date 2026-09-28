@@ -8,7 +8,7 @@ import { EPORTAL_ORIGIN, moduleUrl, publicModules } from "./src/eportal.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
-const host = process.env.HOST || "127.0.0.1";
+const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
 
