@@ -45,3 +45,13 @@ https://eportal.nutc.edu.tw/*
 它只根據登入後頁面狀態判斷成功，然後通知 Dashboard。
 
 因此它適合桌面與支援 userscript 的行動瀏覽器，而且不需要 server-side Chromium / noVNC。
+
+
+## Preference sync
+
+After ePortal login is confirmed, the userscript collects preference-like values from
+`localStorage` and `sessionStorage` and sends them through the Dashboard bridge to
+`/api/sync`.
+
+Keys that look like authentication/session material are excluded on both the userscript
+and server sides. The persisted file is `data/preferences.json`, which is ignored by Git.
