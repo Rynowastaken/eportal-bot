@@ -1,5 +1,9 @@
 # NUTC Portal
 
+
+> [!NOTE]
+> This project is entirely vibe coded with GPT-5.5 and GPT-5.6 Sol. Support and bug fixes are not guaranteed.
+
 個人自架的國立臺中科技大學校園 Dashboard。
 
 Web 入口預期放在 **Cloudflare Access** 後方，因此應用程式本身不再提供第二層 PIN / 密碼登入畫面。
