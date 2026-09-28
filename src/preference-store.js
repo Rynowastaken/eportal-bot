@@ -8,12 +8,18 @@ const ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.join(ROOT, "data");
 const FILE = path.join(DATA_DIR, "preferences.json");
 
+const SENSITIVE_KEY =
+  /(^|[_:.-])(auth|token|cookie|session|jwt|secret|password|passwd|credential|sso|csrf|xsrf|aspnet|asp\.net)([_:.-]|$)/i;
+const PREFERENCE_KEY =
+  /(^|[_:.-])(theme|layout|ui|pref|preference|setting|settings|locale|language|lang|sidebar|dashboard|display|density|compact|sort|order|view|color|font|mode)([_:.-]|$)/i;
+
 function cleanBucket(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
 
   const output = {};
   for (const [key, rawValue] of Object.entries(value)) {
     if (typeof key !== "string" || key.length > 128) continue;
+    if (SENSITIVE_KEY.test(key) || !PREFERENCE_KEY.test(key)) continue;
     if (typeof rawValue !== "string" || rawValue.length > 8192) continue;
     output[key] = rawValue;
   }
