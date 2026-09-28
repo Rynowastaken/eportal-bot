@@ -8,6 +8,9 @@ const sessionLoginButton = document.querySelector("#sessionLoginButton");
 const portalStatusDot = document.querySelector("#portalStatusDot");
 const portalStatusTitle = document.querySelector("#portalStatusTitle");
 const portalStatusDetail = document.querySelector("#portalStatusDetail");
+const serverPortalStatusDot = document.querySelector("#serverPortalStatusDot");
+const serverPortalStatusTitle = document.querySelector("#serverPortalStatusTitle");
+const serverPortalStatusDetail = document.querySelector("#serverPortalStatusDetail");
 
 const statusDialog = document.querySelector("#statusDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
@@ -73,6 +76,50 @@ function setAuthState(state, detail) {
   portalStatusTitle.textContent = "ePortal 尚未檢查";
   portalStatusDetail.textContent =
     detail || "可直接開啟系統；若想確認登入狀態，再按「檢查 / 登入 ePortal」。";
+}
+
+function setServerPortalStatus(status) {
+  const state =
+    status?.status === "valid"
+      ? "valid"
+      : status?.status === "error"
+        ? "checking"
+        : "invalid";
+
+  serverPortalStatusDot.className = `status-dot ${state}`;
+
+  if (status?.status === "valid") {
+    serverPortalStatusTitle.textContent = "Server ePortal 已登入";
+    serverPortalStatusDetail.textContent =
+      "背景工作可使用 .eportal-profile/ 的獨立 Playwright session。";
+    return;
+  }
+
+  if (status?.status === "not-configured") {
+    serverPortalStatusTitle.textContent = "Server ePortal 尚未設定";
+    serverPortalStatusDetail.textContent =
+      "在 server 主機執行 npm run login 完成一次人工登入。";
+    return;
+  }
+
+  if (status?.status === "needs-login") {
+    serverPortalStatusTitle.textContent = "Server ePortal 需要重新登入";
+    serverPortalStatusDetail.textContent =
+      "保存的 server session 已失效；在 server 主機重新執行 npm run login。";
+    return;
+  }
+
+  serverPortalStatusTitle.textContent = "Server ePortal 無法檢查";
+  serverPortalStatusDetail.textContent =
+    status?.error || "Playwright session 狀態檢查失敗。";
+}
+
+async function refreshServerPortalStatus() {
+  try {
+    setServerPortalStatus(await api("/api/portal-status"));
+  } catch (error) {
+    setServerPortalStatus({ status: "error", error: error.message });
+  }
 }
 
 function closeAuthTracking() {
@@ -290,7 +337,10 @@ dialogClose.addEventListener("click", () => statusDialog.close());
 
 (async () => {
   try {
-    const { modules } = await api("/api/modules");
+    const [{ modules }] = await Promise.all([
+      api("/api/modules"),
+      refreshServerPortalStatus(),
+    ]);
     renderModules(modules);
 
     if (consumeMobileReturn()) return;
