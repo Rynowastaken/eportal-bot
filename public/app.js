@@ -52,7 +52,7 @@ function setAuthState(state, detail) {
   portalStatusDot.className = `status-dot ${state}`;
 
   if (state === "valid") {
-    portalStatusTitle.textContent = "ePortal 已確認登入";
+    portalStatusTitle.textContent = "此瀏覽器 ePortal 已登入";
     portalStatusDetail.textContent =
       detail || "目前瀏覽器已完成官方 ePortal 登入，可直接使用各系統。";
     sessionStorage.setItem("nutcPortalVerifiedAt", String(Date.now()));
@@ -60,20 +60,20 @@ function setAuthState(state, detail) {
   }
 
   if (state === "checking") {
-    portalStatusTitle.textContent = "正在檢查 ePortal";
+    portalStatusTitle.textContent = "正在檢查此瀏覽器 ePortal";
     portalStatusDetail.textContent =
       detail || "若 session 還有效會立即確認；失效時才需要在官方頁面重新登入。";
     return;
   }
 
   if (state === "invalid") {
-    portalStatusTitle.textContent = "ePortal 登入未完成";
+    portalStatusTitle.textContent = "此瀏覽器 ePortal 尚未登入";
     portalStatusDetail.textContent =
       detail || "重新點擊「檢查 / 登入 ePortal」即可再試一次。";
     return;
   }
 
-  portalStatusTitle.textContent = "ePortal 尚未檢查";
+  portalStatusTitle.textContent = "此瀏覽器 ePortal 尚未檢查";
   portalStatusDetail.textContent =
     detail || "可直接開啟系統；若想確認登入狀態，再按「檢查 / 登入 ePortal」。";
 }
@@ -89,27 +89,27 @@ function setServerPortalStatus(status) {
   serverPortalStatusDot.className = `status-dot ${state}`;
 
   if (status?.status === "valid") {
-    serverPortalStatusTitle.textContent = "Server ePortal 已登入";
+    serverPortalStatusTitle.textContent = "Server 背景 ePortal 已登入";
     serverPortalStatusDetail.textContent =
-      "背景工作可使用 .eportal-profile/ 的獨立 Playwright session。";
+      "只供背景工作 / 排程使用；不會讓目前瀏覽器自動登入 ePortal。";
     return;
   }
 
   if (status?.status === "not-configured") {
-    serverPortalStatusTitle.textContent = "Server ePortal 尚未設定";
+    serverPortalStatusTitle.textContent = "Server 背景 ePortal 尚未設定";
     serverPortalStatusDetail.textContent =
       "在 server 主機執行 npm run login 完成一次人工登入。";
     return;
   }
 
   if (status?.status === "needs-login") {
-    serverPortalStatusTitle.textContent = "Server ePortal 需要重新登入";
+    serverPortalStatusTitle.textContent = "Server 背景 ePortal 需要重新登入";
     serverPortalStatusDetail.textContent =
       "保存的 server session 已失效；在 server 主機重新執行 npm run login。";
     return;
   }
 
-  serverPortalStatusTitle.textContent = "Server ePortal 無法檢查";
+  serverPortalStatusTitle.textContent = "Server 背景 ePortal 無法檢查";
   serverPortalStatusDetail.textContent =
     status?.error || "Playwright session 狀態檢查失敗。";
 }
@@ -282,9 +282,16 @@ function consumeMobileReturn() {
 }
 
 function openModule(module) {
-  // Do not preflight through the login page. The official module entry is the
-  // authoritative session check: valid sessions SSO immediately; expired
-  // sessions are sent to the official login flow and then continue onward.
+  // Module cards always use the CURRENT BROWSER'S ePortal cookie jar.
+  // The server Playwright profile is intentionally isolated and cannot be
+  // transferred into an incognito/guest browser by redirecting it.
+  if (authState !== "valid") {
+    showDialog(
+      "這張卡片使用目前瀏覽器的 ePortal session",
+      "Server 背景 session 不會自動登入這個瀏覽器。Incognito / 訪客模式有獨立 cookie，所以如果這個瀏覽器尚未登入 ePortal，官方頁面會要求你登入。",
+    );
+  }
+
   const opened = window.open(module.launchPath, "_blank", "noopener");
 
   if (!opened) {
@@ -321,7 +328,9 @@ function renderModules(modules) {
     const launch = document.createElement("span");
     launch.className = "module-launch";
     launch.innerHTML =
-      `<span>直接使用目前的 ePortal session</span><span aria-hidden="true">↗</span>`;
+      authState === "valid"
+        ? `<span>使用此瀏覽器的 ePortal session</span><span aria-hidden="true">↗</span>`
+        : `<span>此瀏覽器可能需要先登入 ePortal</span><span aria-hidden="true">↗</span>`;
 
     copy.append(title, description, launch);
     button.append(icon, copy);
