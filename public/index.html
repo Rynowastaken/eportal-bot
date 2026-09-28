@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=2" />
+    <link rel="stylesheet" href="/app.css?v=4" />
   </head>
   <body>
     <main class="app-shell">
@@ -19,45 +19,41 @@
         </div>
 
         <div class="topbar-actions">
-          <a
-            class="header-action focus-ring"
-            href="/login/eportal"
-            target="_blank"
-            rel="noopener"
-            aria-label="在目前瀏覽器登入 ePortal"
-          >
+          <button class="header-action focus-ring" type="button" data-open-eportal>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-            <span>登入 ePortal</span>
-          </a>
+            <span>ePortal 登入</span>
+          </button>
         </div>
       </header>
 
       <section class="hero glass">
         <div class="hero-copy">
-          <p class="eyebrow">BROWSER SESSION MODE</p>
-          <h2>同一個瀏覽器，直接進校務系統。</h2>
+          <p class="eyebrow">ONE SESSION</p>
+          <h2>一次登入，整個 Dashboard 共用。</h2>
           <p>
-            Dashboard 本身交給 Cloudflare Access 保護。學校登入則直接在你目前的瀏覽器完成，
-            ePortal cookie 留在這個瀏覽器裡；點下模組後，由瀏覽器自己帶著 session 走官方 SSO。
+            樹莓派只維護一個 Playwright persistent Chromium profile。
+            你在這個 Dashboard 裡直接操作該 Chromium 上的官方 ePortal，
+            登入後同一套 session 同時服務 SSO 與背景課表/API 抓取。
           </p>
         </div>
 
         <div class="session-panel">
           <div class="session-head">
-            <span class="status-dot browser"></span>
+            <span id="portalStatusDot" class="status-dot checking"></span>
             <div>
-              <strong>瀏覽器 ePortal Session</strong>
-              <small>Dashboard 不讀取、轉存或代理你的 ePortal cookie。</small>
+              <strong id="portalStatusTitle">正在讀取 ePortal session</strong>
+              <small id="portalStatusDetail">登入狀態由樹莓派 persistent Chromium 保存。</small>
             </div>
           </div>
 
-          <a class="session-login focus-ring" href="/login/eportal" target="_blank" rel="noopener">
-            <span>登入 / 更新 ePortal Session</span>
+          <button class="session-login focus-ring" type="button" data-open-eportal>
+            <span>開啟整合式 ePortal 登入</span>
             <span aria-hidden="true">↗</span>
-          </a>
+          </button>
 
           <p class="session-note">
-            如果模組把你帶回 ePortal 登入頁，先完成官方登入，再回到這個 Dashboard 點一次即可。
+            登入畫面是樹莓派上的真正 Chromium，透過 noVNC 顯示在這個 Dashboard 中；
+            不是重新製作的學校登入表單。
           </p>
         </div>
       </section>
@@ -68,7 +64,8 @@
           <h2>常用校務系統</h2>
         </div>
         <p>
-          每張卡片都只會把目前瀏覽器導向官方 ePortal 入口，不經過伺服器端 Playwright。
+          點卡片時，樹莓派用同一個 persistent ePortal session 產生新的短效 SSO，
+          再讓你目前的瀏覽器開啟目標系統。
         </p>
       </section>
 
@@ -80,27 +77,69 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
           </span>
           <div>
-            <strong>Dashboard 驗證交給 Cloudflare Access</strong>
-            <p>網站不再有第二層 PIN / 密碼畫面。請確保 origin 只透過 Cloudflare Tunnel 或其他受控入口提供。</p>
+            <strong>Cloudflare Access 是唯一 Dashboard 閘門</strong>
+            <p>應用程式沒有額外 PIN。建議 Cloudflare Tunnel 直接連 127.0.0.1:4173，避免 origin 被繞過。</p>
           </div>
         </article>
 
         <article class="info-card glass">
           <span class="info-icon gold">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M12 3v18M5 5l14 14M19 5L5 19"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10M3 3h18v18H3z"/></svg>
           </span>
           <div>
-            <strong>Web 與爬蟲 session 分離</strong>
-            <p>互動式 Dashboard 使用你瀏覽器自己的 ePortal session；Playwright storage state 只留給之後的定時課表抓取。</p>
+            <strong>一個 persistent profile</strong>
+            <p><code>.eportal-profile/</code> 是唯一 ePortal 登入來源，不再維護第二份 storage_state。</p>
           </div>
         </article>
       </section>
 
       <footer>
         <span>NUTC Portal · Personal self-hosted dashboard</span>
-        <span>Protected by Cloudflare Access · Browser-native ePortal SSO</span>
+        <span>Cloudflare Access · Persistent Chromium · noVNC</span>
       </footer>
     </main>
+
+    <dialog id="browserDialog" class="browser-dialog">
+      <section class="browser-card glass">
+        <header class="browser-header">
+          <div class="browser-heading">
+            <span id="browserStatusDot" class="status-dot checking"></span>
+            <div>
+              <p class="eyebrow">OFFICIAL EPORTAL</p>
+              <h2>整合式登入</h2>
+              <p id="browserStatusText">正在準備樹莓派上的 Chromium…</p>
+            </div>
+          </div>
+
+          <div class="browser-actions">
+            <button id="browserHome" class="icon-button focus-ring" type="button" title="重新開啟 ePortal">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10M9 20v-6h6v6"/></svg>
+            </button>
+            <button id="browserClose" class="icon-button focus-ring" type="button" title="關閉">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="novnc-shell">
+          <iframe
+            id="novncFrame"
+            title="樹莓派上的官方 ePortal Chromium"
+            src="about:blank"
+            allow="clipboard-read; clipboard-write"
+          ></iframe>
+          <div id="novncLoading" class="browser-loading">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>正在連線 noVNC…</span>
+          </div>
+        </div>
+
+        <footer class="browser-footer">
+          <span>登入完成後可直接關閉此視窗，session 會留在 persistent profile。</span>
+          <button id="browserDone" class="done-button focus-ring" type="button">完成</button>
+        </footer>
+      </section>
+    </dialog>
 
     <dialog id="statusDialog" class="status-dialog">
       <section class="dialog-card glass">
@@ -113,6 +152,6 @@
       </section>
     </dialog>
 
-    <script src="/app.js?v=2" type="module"></script>
+    <script src="/app.js?v=4" type="module"></script>
   </body>
 </html>
