@@ -85,10 +85,6 @@ export class PortalBrowserSession {
     const pages = this.context.pages();
     this.controlPage = pages[0] || (await this.context.newPage());
 
-    this.context.on("page", (page) => {
-      this.controlPage = page;
-    });
-
     await this.controlPage.goto(EPORTAL_DASHBOARD, {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
@@ -112,7 +108,9 @@ export class PortalBrowserSession {
     await this.init();
 
     if (!this.controlPage || this.controlPage.isClosed()) {
-      this.controlPage = await this.context.newPage();
+      this.controlPage =
+        this.context.pages().find((entry) => !entry.isClosed()) ||
+        (await this.context.newPage());
     }
 
     await this.controlPage.bringToFront();
@@ -127,26 +125,37 @@ export class PortalBrowserSession {
   async status() {
     await this.init();
 
+    const pages = this.context.pages().filter((entry) => !entry.isClosed());
+    if (!pages.length) return { loggedIn: false, url: "", title: "" };
+
+    for (const page of pages) {
+      try {
+        const hostname = new URL(page.url()).hostname;
+        if (
+          hostname === "eportal.nutc.edu.tw" &&
+          (page.url().includes("/nutc_dashboard/") ||
+            (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0)
+        ) {
+          return {
+            loggedIn: true,
+            url: page.url(),
+            title: await page.title().catch(() => ""),
+          };
+        }
+      } catch {
+        // Continue looking through the persistent context.
+      }
+    }
+
     const page =
       this.controlPage && !this.controlPage.isClosed()
         ? this.controlPage
-        : this.context.pages().find((entry) => !entry.isClosed());
-
-    if (!page) return { loggedIn: false, url: "", title: "" };
-
-    let loggedIn = false;
-    try {
-      loggedIn =
-        page.url().includes("/nutc_dashboard/") ||
-        (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
-    } catch {
-      loggedIn = false;
-    }
+        : pages[0];
 
     return {
-      loggedIn,
-      url: page.url(),
-      title: await page.title().catch(() => ""),
+      loggedIn: false,
+      url: page?.url() || "",
+      title: page ? await page.title().catch(() => "") : "",
     };
   }
 
