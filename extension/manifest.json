@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "NUTC Portal Bridge",
+  "version": "0.1.0",
+  "description": "Notifies NUTC Portal when the official ePortal login succeeds in the same client browser.",
+  "host_permissions": [
+    "https://eportal.nutc.edu.tw/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://eportal.nutc.edu.tw/*"
+      ],
+      "js": [
+        "eportal-bridge.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "nutc-portal-bridge@local"
+    }
+  }
+}
