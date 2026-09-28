@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal Bridge
 // @namespace    https://github.com/Rynowastaken/eportal-bot
-// @version      0.3.1
+// @version      0.4.0
 // @description  Detect official NUTC ePortal login and notify the NUTC Portal dashboard.
 // @author       Rynowastaken
 // @match        https://eportal.nutc.edu.tw/*
@@ -23,60 +23,50 @@
 
   let lastNotification = null;
 
-  const SENSITIVE_KEYS = new Set([
-    "access_token",
-    "refresh_token",
-    "id_token",
-    "auth_token",
-    "public_app_user_sso_token",
-    "asp.net_sessionid",
-  ]);
-  const PREFERENCE_KEY =
-    /(^|[_:.-])(theme|layout|ui|pref|preference|setting|settings|locale|language|lang|sidebar|dashboard|display|density|compact|sort|order|view|color|font|mode|size|widget|card|profile)([_:.-]|$)/i;
+  const DISPLAY_NAME_SELECTOR = ".name.me-4";
+  const IDENTITY_CONTEXT_SELECTORS = [
+    "#oaksUserInfoModal",
+    "#nutcUserBindModal",
+  ];
 
-  function isSensitiveKey(key) {
-    return SENSITIVE_KEYS.has(String(key).toLowerCase());
+  function normalizeText(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
-  function collectPreferenceBucket(storage) {
-    const output = {};
+  function visibleText(element) {
+    if (!element) return "";
+    const style = getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden") return "";
+    return normalizeText(element.textContent);
+  }
 
-    try {
-      for (let index = 0; index < storage.length; index += 1) {
-        const key = storage.key(index);
-        if (!key || key.length > 128) continue;
-        if (isSensitiveKey(key) || !PREFERENCE_KEY.test(key)) continue;
+  async function collectProfile() {
+    const displayName = normalizeText(
+      document.querySelector(DISPLAY_NAME_SELECTOR)?.textContent,
+    );
+    if (!displayName) return null;
 
-        const value = storage.getItem(key);
-        if (typeof value !== "string" || value.length > 8192) continue;
-        output[key] = value;
-      }
-    } catch {
-      // Storage can be unavailable in hardened/private browser contexts.
+    const identityParts = [displayName];
+    for (const selector of IDENTITY_CONTEXT_SELECTORS) {
+      const text = visibleText(document.querySelector(selector));
+      if (text) identityParts.push(text);
     }
 
-    return output;
-  }
+    const seed = identityParts.join("\n");
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(seed),
+    );
+    const profileId = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
 
-  function collectPreferences() {
     return {
-      localStorage: collectPreferenceBucket(localStorage),
-      sessionStorage: collectPreferenceBucket(sessionStorage),
+      id: profileId,
+      displayName,
     };
-  }
-
-  function encodePreferences(value) {
-    try {
-      const bytes = new TextEncoder().encode(JSON.stringify(value));
-      let binary = "";
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      return btoa(binary)
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/g, "");
-    } catch {
-      return "";
-    }
   }
 
   function safeSessionSet(key, value) {
@@ -145,19 +135,19 @@
     return null;
   }
 
-  function notifyLoggedIn(state) {
+  async function notifyLoggedIn(state) {
     if (!state.mode || !state.nonce) return;
     if (lastNotification === state.nonce) return;
 
     lastNotification = state.nonce;
 
-    const preferences = collectPreferences();
+    const profile = await collectProfile();
     const payload = {
       source: SOURCE,
       type: "auth-status",
       loggedIn: true,
       nonce: state.nonce,
-      preferences,
+      profile,
       ts: Date.now(),
     };
 
@@ -178,11 +168,13 @@
         returnUrl.searchParams.set("eportalAuth", "ok");
         returnUrl.searchParams.set("nonce", state.nonce);
 
-        const encodedPreferences = encodePreferences(preferences);
-        if (encodedPreferences && encodedPreferences.length < 6000) {
-          const hash = new URLSearchParams(returnUrl.hash.replace(/^#/, ""));
-          hash.set("nutc-sync", encodedPreferences);
-          returnUrl.hash = hash.toString();
+        if (profile) {
+          const encodedProfile = encodePreferences(profile);
+          if (encodedProfile && encodedProfile.length < 2000) {
+            const hash = new URLSearchParams(returnUrl.hash.replace(/^#/, ""));
+            hash.set("nutc-profile", encodedProfile);
+            returnUrl.hash = hash.toString();
+          }
         }
 
         location.replace(returnUrl.toString());
@@ -195,7 +187,7 @@
     if (!state.mode || !state.nonce) return;
 
     if (isLoggedIn()) {
-      notifyLoggedIn(state);
+      void notifyLoggedIn(state);
     }
   }
 
