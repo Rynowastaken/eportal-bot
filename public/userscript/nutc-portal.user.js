@@ -24,22 +24,11 @@
   let lastNotification = null;
 
   const DISPLAY_NAME_SELECTOR = ".name.me-4";
-  const IDENTITY_CONTEXT_SELECTORS = [
-    "#oaksUserInfoModal",
-    "#nutcUserBindModal",
-  ];
 
   function normalizeText(value) {
     return String(value || "")
       .replace(/\s+/g, " ")
       .trim();
-  }
-
-  function visibleText(element) {
-    if (!element) return "";
-    const style = getComputedStyle(element);
-    if (style.display === "none" || style.visibility === "hidden") return "";
-    return normalizeText(element.textContent);
   }
 
   async function collectProfile() {
@@ -48,13 +37,9 @@
     );
     if (!displayName) return null;
 
-    const identityParts = [displayName];
-    for (const selector of IDENTITY_CONTEXT_SELECTORS) {
-      const text = visibleText(document.querySelector(selector));
-      if (text) identityParts.push(text);
-    }
-
-    const seed = identityParts.join("\n");
+    // No stable school-issued identifier is exposed in the observed DOM.
+    // Keep the seed deterministic instead of mixing in mutable message/modal text.
+    const seed = displayName;
     const digest = await crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(seed),
