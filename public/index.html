@@ -52,8 +52,8 @@
           </button>
 
           <p class="session-note">
-            登入畫面是樹莓派上的真正 Chromium，透過 noVNC 顯示在這個 Dashboard 中；
-            不是重新製作的學校登入表單。
+            登入畫面永遠使用同一個 persistent Chromium；支援 noVNC 的 runtime 會直接內嵌在 Dashboard，
+            其他環境則使用主機桌面或你設定的外部 noVNC bridge。
           </p>
         </div>
       </section>
@@ -95,7 +95,7 @@
 
       <footer>
         <span>NUTC Portal · Personal self-hosted dashboard</span>
-        <span>Cloudflare Access · Persistent Chromium · noVNC</span>
+        <span>Cloudflare Access · Persistent Chromium · Runtime-aware</span>
       </footer>
     </main>
 
