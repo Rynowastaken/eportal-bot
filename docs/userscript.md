@@ -47,11 +47,18 @@ https://eportal.nutc.edu.tw/*
 因此它適合桌面與支援 userscript 的行動瀏覽器，而且不需要 server-side Chromium / noVNC。
 
 
-## Preference sync
+## Profile identity
 
-After ePortal login is confirmed, the userscript collects preference-like values from
-`localStorage` and `sessionStorage` and sends them through the Dashboard bridge to
-`/api/sync`.
+ePortal currently exposes no useful Web Storage values for this purpose, so the
+userscript does not enumerate or upload `localStorage` / `sessionStorage`.
 
-Keys that look like authentication/session material are excluded on both the userscript
-and server sides. The persisted file is `data/preferences.json`, which is ignored by Git.
+After login is confirmed, it reads the display name from `.name.me-4`. If visible
+user-info modal text is available, that text is added to the local seed. The seed is
+hashed with SHA-256 in the browser and only the resulting profile ID plus display name
+is sent through the Dashboard bridge to `/api/sync`.
+
+This profile ID is a routing hint for this personal dashboard, not a school-issued
+student/account identifier. Two users with identical visible identity text can collide,
+and changes to the visible identity text can produce a different ID.
+
+The persisted file is `data/preferences.json`, which is ignored by Git.
