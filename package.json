@@ -1,14 +1,15 @@
 {
   "name": "eportal-bot",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Access protected NUTC dashboard with one persistent Playwright ePortal session and integrated noVNC login.",
+  "description": "Cloudflare Access protected NUTC dashboard with one persistent Playwright ePortal session.",
   "scripts": {
-    "start": "bash scripts/start.sh",
-    "start:node": "node server.js",
+    "start": "node scripts/start.mjs",
+    "doctor": "node scripts/start.mjs --check",
+    "start:server": "node server.js",
     "install-browser": "playwright install chromium",
-    "check": "node --check server.js && node --check src/eportal.js && node --check src/browser-session.js && node --check public/app.js"
+    "check": "node --check server.js && node --check scripts/start.mjs && node --check src/eportal.js && node --check src/browser-session.js && node --check public/app.js"
   },
   "engines": {
     "node": ">=18"
