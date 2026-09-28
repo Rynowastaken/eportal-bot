@@ -68,8 +68,21 @@ export const MODULES = Object.freeze([
   },
 ]);
 
+export function moduleById(moduleId) {
+  const module = MODULES.find((entry) => entry.id === moduleId);
+  if (!module) throw new Error("Unknown ePortal module.");
+  return module;
+}
+
+export function moduleUrl(moduleId) {
+  return new URL(moduleById(moduleId).path, EPORTAL_ORIGIN).toString();
+}
+
 export function publicModules() {
-  return MODULES.map(({ path, ...module }) => module);
+  return MODULES.map(({ path, ...module }) => ({
+    ...module,
+    launchPath: `/go/${module.id}`,
+  }));
 }
 
 export async function ensureOutputDir() {
@@ -157,123 +170,6 @@ export async function checkEportalLogin() {
   }
 }
 
-function moduleById(moduleId) {
-  const module = MODULES.find((entry) => entry.id === moduleId);
-  if (!module) throw new Error("Unknown ePortal module.");
-  return module;
-}
-
-function topLevelExternalRequest(request, page) {
-  if (!request.isNavigationRequest()) return false;
-  if (request.frame() !== page.mainFrame()) return false;
-
-  try {
-    const url = new URL(request.url());
-    return url.hostname !== "eportal.nutc.edu.tw";
-  } catch {
-    return false;
-  }
-}
-
-function externalLaunchPayload(request) {
-  const url = new URL(request.url());
-  if (url.protocol !== "https:") {
-    throw new Error("ePortal attempted to launch a non-HTTPS destination.");
-  }
-
-  const method = request.method().toUpperCase();
-  if (method === "GET") {
-    return { kind: "url", method, url: url.toString() };
-  }
-
-  if (method === "POST") {
-    const contentType = String(request.headers()["content-type"] || "").toLowerCase();
-    if (!contentType.includes("application/x-www-form-urlencoded")) {
-      throw new Error(`Unsupported SSO launch method: POST ${contentType || "without form content type"}`);
-    }
-
-    const params = new URLSearchParams(request.postData() || "");
-    return {
-      kind: "form",
-      method,
-      url: url.toString(),
-      fields: [...params.entries()],
-    };
-  }
-
-  throw new Error(`Unsupported SSO launch method: ${method}`);
-}
-
-export async function captureModuleLaunch(moduleId) {
-  const module = moduleById(moduleId);
-
-  if (!(await stateFileExists())) {
-    throw new Error("ePortal login state is missing. Run npm run login first.");
-  }
-
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ storageState: STATE_FILE });
-  const page = await context.newPage();
-  let settled = false;
-  let resolveLaunch;
-  let rejectLaunch;
-
-  const launchPromise = new Promise((resolve, reject) => {
-    resolveLaunch = resolve;
-    rejectLaunch = reject;
-  });
-
-  const timeout = setTimeout(() => {
-    if (!settled) {
-      settled = true;
-      rejectLaunch(new Error("Timed out waiting for the module SSO destination."));
-    }
-  }, 20_000);
-
-  try {
-    if (!(await pageIsLoggedIn(page))) {
-      throw new Error("Saved ePortal login state has expired. Run npm run login again.");
-    }
-
-    await context.route("**/*", async (route) => {
-      const request = route.request();
-
-      if (!settled && topLevelExternalRequest(request, page)) {
-        try {
-          const payload = externalLaunchPayload(request);
-          settled = true;
-          clearTimeout(timeout);
-          resolveLaunch(payload);
-        } catch (error) {
-          settled = true;
-          clearTimeout(timeout);
-          rejectLaunch(error);
-        }
-        await route.abort("blockedbyclient");
-        return;
-      }
-
-      await route.continue();
-    });
-
-    const target = new URL(module.path, EPORTAL_ORIGIN).toString();
-    page.goto(target, {
-      waitUntil: "domcontentloaded",
-      timeout: 20_000,
-    }).catch(() => {
-      // Expected when the external navigation is intentionally aborted before
-      // the one-time SSO ticket is consumed by Playwright.
-    });
-
-    const launch = await launchPromise;
-    await saveState(context);
-    return { module: module.id, ...launch };
-  } finally {
-    clearTimeout(timeout);
-    await browser.close();
-  }
-}
-
 export function validateAisUrl(rawUrl) {
   let url;
   try {
@@ -321,7 +217,7 @@ export async function fetchAuthenticatedAis(rawUrl, { headed = false } = {}) {
       throw new Error("Saved ePortal login state has expired. Run npm run login again.");
     }
 
-    await page.goto(new URL(MODULES[0].path, EPORTAL_ORIGIN).toString(), {
+    await page.goto(moduleUrl("ais"), {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     });
