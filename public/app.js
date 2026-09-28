@@ -26,6 +26,12 @@ const icons = {
 };
 
 let browserStatusTimer = null;
+let runtime = {
+  platform: "unknown",
+  arch: "unknown",
+  loginUiMode: "host",
+  noVncEnabled: false,
+};
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -53,17 +59,21 @@ function showDialog(title, message) {
 
 function applyPortalStatus(status) {
   const loggedIn = Boolean(status?.loggedIn);
-
   portalStatusDot.className = `status-dot ${loggedIn ? "valid" : "invalid"}`;
   portalStatusTitle.textContent = loggedIn ? "ePortal 已登入" : "ePortal 尚未登入";
-  portalStatusDetail.textContent = loggedIn
-    ? "persistent Chromium session 可直接產生新的 SSO。"
-    : "開啟整合式登入，在官方 ePortal 完成登入即可。";
+
+  if (loggedIn) {
+    portalStatusDetail.textContent = "persistent Chromium session 可直接產生新的 SSO。";
+  } else if (runtime.noVncEnabled) {
+    portalStatusDetail.textContent = "可直接在 Dashboard 內開啟官方 ePortal 登入畫面。";
+  } else {
+    portalStatusDetail.textContent = "登入會開在主機桌面；可設定 noVNC bridge 取得內嵌遠端畫面。";
+  }
 
   browserStatusDot.className = `status-dot ${loggedIn ? "valid" : "invalid"}`;
   browserStatusText.textContent = loggedIn
-    ? "已偵測到 ePortal 登入狀態。可關閉此視窗並使用下方模組。"
-    : "請在下方 Chromium 畫面完成官方 ePortal 登入。";
+    ? "已偵測到 ePortal 登入狀態。"
+    : "請在 Chromium 中完成官方 ePortal 登入。";
 }
 
 async function refreshPortalStatus() {
@@ -73,7 +83,7 @@ async function refreshPortalStatus() {
   } catch {
     portalStatusDot.className = "status-dot invalid";
     portalStatusTitle.textContent = "無法讀取 ePortal session";
-    portalStatusDetail.textContent = "請確認 Chromium / noVNC 服務是否正常。";
+    portalStatusDetail.textContent = "請先執行 npm run doctor 檢查目前系統環境。";
   }
 }
 
@@ -122,27 +132,42 @@ function noVncUrl() {
   return `/novnc/vnc.html?${params.toString()}`;
 }
 
+function hostLoginMessage() {
+  const names = {
+    darwin: "macOS",
+    win32: "Windows",
+    linux: "Linux",
+  };
+  const platformName = names[runtime.platform] || runtime.platform;
+  return `官方 ePortal 已開在 ${platformName} 主機上的 persistent Chromium。完成登入後，這個 session 會同時給 SSO 與背景抓取使用。若要從遠端直接操作登入畫面，設定 PORTAL_NOVNC_TARGET 或使用支援的 noVNC runtime。`;
+}
+
 async function openIntegratedLogin() {
   try {
+    const result = await api("/api/browser/open", {
+      method: "POST",
+      body: "{}",
+    });
+
+    applyPortalStatus(result);
+
+    if (!runtime.noVncEnabled) {
+      showDialog("ePortal 已在主機上開啟", hostLoginMessage());
+      return;
+    }
+
     novncLoading.classList.remove("hidden");
     browserStatusDot.className = "status-dot checking";
-    browserStatusText.textContent = "正在將 persistent Chromium 導向官方 ePortal…";
+    browserStatusText.textContent = "正在連線到 persistent Chromium…";
 
     if (typeof browserDialog.showModal === "function" && !browserDialog.open) {
       browserDialog.showModal();
     }
 
-    await api("/api/browser/open", {
-      method: "POST",
-      body: "{}",
-    });
-
     const nextSrc = noVncUrl();
     if (novncFrame.getAttribute("src") !== nextSrc) {
       novncFrame.src = nextSrc;
     }
-
-    await refreshPortalStatus();
 
     clearInterval(browserStatusTimer);
     browserStatusTimer = setInterval(refreshPortalStatus, 2000);
@@ -167,8 +192,8 @@ browserHome.addEventListener("click", async () => {
   try {
     browserStatusDot.className = "status-dot checking";
     browserStatusText.textContent = "正在重新開啟官方 ePortal…";
-    await api("/api/browser/open", { method: "POST", body: "{}" });
-    await refreshPortalStatus();
+    const result = await api("/api/browser/open", { method: "POST", body: "{}" });
+    applyPortalStatus(result);
   } catch (error) {
     showDialog("無法重新開啟 ePortal", error.message);
   }
@@ -185,7 +210,12 @@ dialogClose.addEventListener("click", () => statusDialog.close());
 
 (async () => {
   try {
-    const { modules } = await api("/api/modules");
+    const [{ modules }, serverStatus] = await Promise.all([
+      api("/api/modules"),
+      api("/api/server/status"),
+    ]);
+
+    runtime = { ...runtime, ...serverStatus };
     renderModules(modules);
     await refreshPortalStatus();
   } catch (error) {
