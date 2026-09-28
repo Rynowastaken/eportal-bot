@@ -9,7 +9,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Legacy server-side browser state
+# Server-side browser authentication state
 .eportal-profile/
 eportal-auth-state.json
 *.auth.json
