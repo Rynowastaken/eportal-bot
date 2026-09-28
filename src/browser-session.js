@@ -70,16 +70,42 @@ export class PortalBrowserSession {
   async init() {
     if (this.context) return;
 
+    if (
+      process.platform === "linux" &&
+      !process.env.DISPLAY &&
+      !process.env.WAYLAND_DISPLAY
+    ) {
+      throw new Error(
+        "No graphical display is available. Run npm start so the runtime checker can provision or validate a display.",
+      );
+    }
+
     await fs.mkdir(PROFILE_DIR, { recursive: true });
 
     const executablePath = String(process.env.PORTAL_CHROMIUM || "").trim() || undefined;
+    if (executablePath) {
+      try {
+        await fs.access(executablePath);
+      } catch {
+        throw new Error("PORTAL_CHROMIUM does not point to an accessible executable.");
+      }
+    }
+
+    const browserArgs = ["--window-size=1280,800", "--start-maximized"];
+    if (
+      process.platform === "linux" &&
+      !process.env.DISPLAY &&
+      process.env.WAYLAND_DISPLAY
+    ) {
+      browserArgs.push("--ozone-platform=wayland");
+    }
 
     this.context = await chromium.launchPersistentContext(PROFILE_DIR, {
       headless: false,
       viewport: null,
       locale: "zh-TW",
       executablePath,
-      args: ["--window-size=1280,800", "--start-maximized"],
+      args: browserArgs,
     });
 
     this.context.setDefaultTimeout(20_000);
