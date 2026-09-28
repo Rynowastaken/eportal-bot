@@ -12,6 +12,7 @@ export const MODULES = Object.freeze([
     path: "/?app_id=NUTC_6401",
     sourceColor: "#a742ae",
     icon: "graduation-cap",
+    serverBacked: true,
   },
   {
     id: "webmail",
@@ -68,6 +69,6 @@ export function moduleUrl(moduleId) {
 export function publicModules() {
   return MODULES.map(({ path, ...module }) => ({
     ...module,
-    launchPath: `/go/${module.id}`,
+    launchPath: module.id === "ais" ? "/student.html" : `/go/${module.id}`,
   }));
 }
