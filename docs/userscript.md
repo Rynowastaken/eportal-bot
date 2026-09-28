@@ -52,10 +52,14 @@ https://eportal.nutc.edu.tw/*
 ePortal currently exposes no useful Web Storage values for this purpose, so the
 userscript does not enumerate or upload `localStorage` / `sessionStorage`.
 
-After login is confirmed, it reads the display name from `.name.me-4`. If visible
-user-info modal text is available, that text is added to the local seed. The seed is
-hashed with SHA-256 in the browser and only the resulting profile ID plus display name
-is sent through the Dashboard bridge to `/api/sync`.
+After login is confirmed, it reads the display name from `.name.me-4` and uses that
+normalized text as the deterministic local seed. The seed is hashed with SHA-256 in the
+browser and only the resulting profile ID plus display name is sent through the
+Dashboard bridge to `/api/sync`.
+
+The other user-related DOM areas discovered so far are message/modal/template regions
+whose contents are not yet proven stable, so they are deliberately excluded from the
+seed for now.
 
 This profile ID is a routing hint for this personal dashboard, not a school-issued
 student/account identifier. Two users with identical visible identity text can collide,
