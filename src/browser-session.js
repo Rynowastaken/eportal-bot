@@ -72,10 +72,13 @@ export class PortalBrowserSession {
 
     await fs.mkdir(PROFILE_DIR, { recursive: true });
 
+    const executablePath = String(process.env.PORTAL_CHROMIUM || "").trim() || undefined;
+
     this.context = await chromium.launchPersistentContext(PROFILE_DIR, {
       headless: false,
       viewport: null,
       locale: "zh-TW",
+      executablePath,
       args: ["--window-size=1280,800", "--start-maximized"],
     });
 
