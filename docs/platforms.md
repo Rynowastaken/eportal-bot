@@ -69,13 +69,26 @@ Without that setting, login mode falls back to `host`.
 
 ## Chromium
 
-By default Playwright uses its managed Chromium. A system browser can be selected with a full executable path:
+The runtime checks the browser before the server starts:
+
+1. use `PORTAL_CHROMIUM` when explicitly set;
+2. otherwise use Playwright-managed Chromium when its executable is actually installed;
+3. otherwise look for a system Chromium / Chrome / Edge installation;
+4. stop with a clear error if no usable browser exists.
+
+To install Playwright's managed Chromium:
+
+```bash
+npm run install-browser
+```
+
+Or select a browser explicitly:
 
 ```bash
 PORTAL_CHROMIUM=/path/to/chromium npm start
 ```
 
-This is useful on architectures where Playwright's bundled browser is unavailable.
+Run `npm run doctor` to see which executable will be used.
 
 ## Useful overrides
 
