@@ -269,6 +269,12 @@ button {
   line-height: 1.5;
 }
 
+.server-session-head {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--glass-border);
+}
+
 .section-heading {
   display: flex;
   align-items: end;
