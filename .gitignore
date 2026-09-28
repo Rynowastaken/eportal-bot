@@ -1,6 +1,3 @@
-# Canonical persistent ePortal browser profile - never commit
-.eportal-profile/
-
 # Local environment
 .env
 .env.*
@@ -11,6 +8,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Legacy server-side browser state
+.eportal-profile/
+eportal-auth-state.json
+*.auth.json
 
 # Generated output
 output/
