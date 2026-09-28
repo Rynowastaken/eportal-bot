@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "doctor": "node scripts/doctor.mjs",
-    "check": "node --check server.js && node --check scripts/doctor.mjs && node --check scripts/portal-login.mjs && node --check scripts/portal-status.mjs && node --check src/eportal.js && node --check src/portal-session.js && node --check src/preference-store.js && node --check public/app.js && node --check public/userscript/nutc-portal.user.js",
+    "check": "node --check server.js && node --check scripts/doctor.mjs && node --check scripts/portal-login.mjs && node --check scripts/portal-status.mjs && node --check scripts/portal-run.mjs && node --check src/eportal.js && node --check src/portal-session.js && node --check src/preference-store.js && node --check public/app.js && node --check public/userscript/nutc-portal.user.js",
     "login": "node scripts/portal-login.mjs",
-    "portal:status": "node scripts/portal-status.mjs"
+    "portal:status": "node scripts/portal-status.mjs",
+    "run": "node scripts/portal-run.mjs"
   },
   "engines": {
     "node": ">=18"
