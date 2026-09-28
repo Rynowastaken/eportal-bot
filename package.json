@@ -1,13 +1,13 @@
 {
   "name": "eportal-bot",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
   "type": "module",
   "description": "Cloudflare Access protected NUTC dashboard using the user's browser for ePortal SSO.",
   "scripts": {
     "start": "node server.js",
     "doctor": "node scripts/doctor.mjs",
-    "check": "node --check server.js && node --check scripts/doctor.mjs && node --check src/eportal.js && node --check public/app.js && node --check public/userscript/nutc-portal.user.js"
+    "check": "node --check server.js && node --check scripts/doctor.mjs && node --check src/eportal.js && node --check src/preference-store.js && node --check public/app.js && node --check public/userscript/nutc-portal.user.js"
   },
   "engines": {
     "node": ">=18"
