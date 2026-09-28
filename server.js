@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, moduleUrl, publicModules } from "./src/eportal.js";
+import { PreferenceStore } from "./src/preference-store.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,7 @@ const publicDir = path.join(__dirname, "public");
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
+const preferenceStore = new PreferenceStore();
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -25,6 +27,27 @@ function sendJson(res, status, body) {
 
 function sendError(res, status, message) {
   sendJson(res, status, { error: message });
+}
+
+async function readJsonBody(req, limit = 64 * 1024) {
+  const chunks = [];
+  let total = 0;
+
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > limit) {
+      throw Object.assign(new Error("Request body is too large."), { statusCode: 413 });
+    }
+    chunks.push(chunk);
+  }
+
+  if (!chunks.length) return {};
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw Object.assign(new Error("Invalid JSON body."), { statusCode: 400 });
+  }
 }
 
 function redirect(res, location) {
@@ -101,6 +124,21 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/sync") {
+      sendJson(res, 200, preferenceStore.get());
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/sync") {
+      const body = await readJsonBody(req);
+      const saved = await preferenceStore.set(body);
+      sendJson(res, 200, {
+        ok: true,
+        updatedAt: saved.updatedAt,
+      });
+      return;
+    }
+
     const goMatch = req.method === "GET" && url.pathname.match(/^\/go\/([a-z0-9-]+)$/);
     if (goMatch) {
       try {
@@ -119,10 +157,15 @@ const server = http.createServer(async (req, res) => {
     await serveStatic(res, url.pathname);
   } catch (error) {
     console.error("Request failed:", error?.message || error);
-    if (!res.headersSent) sendError(res, 500, "Internal server error.");
-    else res.end();
+    if (!res.headersSent) {
+      sendError(res, error?.statusCode || 500, error?.statusCode ? error.message : "Internal server error.");
+    } else {
+      res.end();
+    }
   }
 });
+
+await preferenceStore.init();
 
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
