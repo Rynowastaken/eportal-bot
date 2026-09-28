@@ -2,6 +2,11 @@
 eportal-auth-state.json
 *.auth.json
 
+# Local dashboard secrets
+.env
+.env.*
+!.env.example
+
 # Playwright/browser state
 playwright/.auth/
 user-data-dir/
