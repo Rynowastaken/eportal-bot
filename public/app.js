@@ -1,5 +1,5 @@
 const EPORTAL_ORIGIN = "https://eportal.nutc.edu.tw";
-const EPORTAL_LOGIN = "https://eportal.nutc.edu.tw/login_main.php";
+const EPORTAL_LOGIN = "https://eportal.nutc.edu.tw/";
 const USERSCRIPT_SOURCE = "nutc-portal-userscript";
 
 const moduleGrid = document.querySelector("#moduleGrid");
