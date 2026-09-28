@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal Bridge
 // @namespace    https://github.com/Rynowastaken/eportal-bot
-// @version      0.2.0
+// @version      0.3.0
 // @description  Detect official NUTC ePortal login and notify the NUTC Portal dashboard.
 // @author       Rynowastaken
 // @match        https://eportal.nutc.edu.tw/*
@@ -22,6 +22,52 @@
   const STUDENT_SELECTOR = 'button[onclick*="NUTC_6401"]';
 
   let lastNotification = null;
+
+  const SENSITIVE_KEY =
+    /(^|[_:.-])(auth|token|cookie|session|jwt|secret|password|passwd|credential|sso|csrf|xsrf|aspnet|asp\.net)([_:.-]|$)/i;
+  const PREFERENCE_KEY =
+    /(^|[_:.-])(theme|layout|ui|pref|preference|setting|settings|locale|language|lang|sidebar|dashboard|display|density|compact|sort|order|view|color|font|mode)([_:.-]|$)/i;
+
+  function collectPreferenceBucket(storage) {
+    const output = {};
+
+    try {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (!key || key.length > 128) continue;
+        if (SENSITIVE_KEY.test(key) || !PREFERENCE_KEY.test(key)) continue;
+
+        const value = storage.getItem(key);
+        if (typeof value !== "string" || value.length > 8192) continue;
+        output[key] = value;
+      }
+    } catch {
+      // Storage can be unavailable in hardened/private browser contexts.
+    }
+
+    return output;
+  }
+
+  function collectPreferences() {
+    return {
+      localStorage: collectPreferenceBucket(localStorage),
+      sessionStorage: collectPreferenceBucket(sessionStorage),
+    };
+  }
+
+  function encodePreferences(value) {
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(value));
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary)
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
+    } catch {
+      return "";
+    }
+  }
 
   function safeSessionSet(key, value) {
     try {
@@ -95,11 +141,13 @@
 
     lastNotification = state.nonce;
 
+    const preferences = collectPreferences();
     const payload = {
       source: SOURCE,
       type: "auth-status",
       loggedIn: true,
       nonce: state.nonce,
+      preferences,
       ts: Date.now(),
     };
 
@@ -119,6 +167,14 @@
       if (returnUrl) {
         returnUrl.searchParams.set("eportalAuth", "ok");
         returnUrl.searchParams.set("nonce", state.nonce);
+
+        const encodedPreferences = encodePreferences(preferences);
+        if (encodedPreferences && encodedPreferences.length < 6000) {
+          const hash = new URLSearchParams(returnUrl.hash.replace(/^#/, ""));
+          hash.set("nutc-sync", encodedPreferences);
+          returnUrl.hash = hash.toString();
+        }
+
         location.replace(returnUrl.toString());
       }
     }
