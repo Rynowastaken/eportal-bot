@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
 const __filename = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(__filename), "..");
@@ -14,10 +15,25 @@ const arch = process.arch;
 const env = { ...process.env };
 const children = [];
 
-function commandExists(command) {
+function commandPath(command) {
   const lookup = platform === "win32" ? "where" : "which";
-  const result = spawnSync(lookup, [command], { stdio: "ignore" });
-  return result.status === 0;
+  const result = spawnSync(lookup, [command], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+
+  if (result.status !== 0) return null;
+
+  const first = String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find(Boolean);
+
+  return first || null;
+}
+
+function commandExists(command) {
+  return Boolean(commandPath(command));
 }
 
 function executableExists(value) {
@@ -27,6 +43,107 @@ function executableExists(value) {
   } catch {
     return false;
   }
+}
+
+function firstExistingFile(candidates) {
+  for (const candidate of candidates.filter(Boolean)) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Keep looking.
+    }
+  }
+  return null;
+}
+
+function findSystemChromium() {
+  const fromPath =
+    platform === "linux"
+      ? [
+          "chromium",
+          "chromium-browser",
+          "google-chrome-stable",
+          "google-chrome",
+          "microsoft-edge-stable",
+          "microsoft-edge",
+        ]
+      : platform === "darwin"
+        ? ["chromium", "google-chrome", "microsoft-edge"]
+        : ["chrome", "chromium", "msedge"];
+
+  for (const command of fromPath) {
+    const resolved = commandPath(command);
+    if (resolved && executableExists(resolved)) return resolved;
+  }
+
+  if (platform === "darwin") {
+    return firstExistingFile([
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      path.join(env.HOME || "", "Applications/Chromium.app/Contents/MacOS/Chromium"),
+      path.join(env.HOME || "", "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    ]);
+  }
+
+  if (platform === "win32") {
+    const programFiles = env.ProgramFiles || env.PROGRAMFILES;
+    const programFilesX86 = env["ProgramFiles(x86)"] || env.PROGRAMFILES_X86;
+    const localAppData = env.LOCALAPPDATA;
+
+    return firstExistingFile([
+      programFiles && path.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+      programFilesX86 && path.join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+      localAppData && path.join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+      programFiles && path.join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+      programFilesX86 && path.join(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
+      localAppData && path.join(localAppData, "Chromium", "Application", "chrome.exe"),
+    ]);
+  }
+
+  return null;
+}
+
+function detectBrowser() {
+  const override = String(env.PORTAL_CHROMIUM || "").trim() || null;
+  if (override) {
+    return {
+      source: "override",
+      path: override,
+      exists: executableExists(override),
+    };
+  }
+
+  let managedPath = null;
+  try {
+    managedPath = chromium.executablePath();
+  } catch {
+    managedPath = null;
+  }
+
+  if (managedPath && executableExists(managedPath)) {
+    return {
+      source: "playwright",
+      path: managedPath,
+      exists: true,
+    };
+  }
+
+  const systemPath = findSystemChromium();
+  if (systemPath) {
+    return {
+      source: "system",
+      path: systemPath,
+      exists: true,
+      missingManagedPath: managedPath,
+    };
+  }
+
+  return {
+    source: "missing",
+    path: managedPath,
+    exists: false,
+  };
 }
 
 function firstNoVncRoot() {
@@ -60,14 +177,18 @@ function printReport(report) {
   console.log(`  x11vnc: ${report.commands.x11vnc ? "yes" : "no"}`);
   console.log(`  websockify: ${report.commands.websockify ? "yes" : "no"}`);
   console.log(`  noVNC web root: ${report.noVncWeb || "not found"}`);
-  if (report.chromiumOverride) {
+  if (report.browser.source === "playwright") {
+    console.log(`  Chromium: Playwright-managed (${report.browser.path})`);
+  } else if (report.browser.source === "system") {
+    console.log(`  Chromium: system browser (${report.browser.path})`);
+  } else if (report.browser.source === "override") {
     console.log(
-      `  PORTAL_CHROMIUM: ${report.chromiumOverride} (${
-        report.chromiumOverrideExists ? "found" : "not found"
+      `  Chromium: PORTAL_CHROMIUM=${report.browser.path} (${
+        report.browser.exists ? "found" : "not found"
       })`,
     );
   } else {
-    console.log("  Chromium: Playwright-managed browser");
+    console.log("  Chromium: not found");
   }
 
   for (const warning of report.warnings) console.warn(`  warning: ${warning}`);
@@ -90,10 +211,18 @@ function inspectRuntime() {
     websockify: commandExists("websockify"),
   };
 
-  const chromiumOverride = String(env.PORTAL_CHROMIUM || "").trim() || null;
-  const chromiumOverrideExists = executableExists(chromiumOverride);
-  if (chromiumOverride && !chromiumOverrideExists) {
+  const browser = detectBrowser();
+
+  if (browser.source === "override" && !browser.exists) {
     errors.push("PORTAL_CHROMIUM points to a file that does not exist.");
+  } else if (browser.source === "missing") {
+    errors.push(
+      "No Chromium browser is available. Run 'npm run install-browser' or set PORTAL_CHROMIUM to an installed Chromium/Chrome/Edge executable.",
+    );
+  } else if (browser.source === "system" && browser.missingManagedPath) {
+    warnings.push(
+      "Playwright-managed Chromium is not installed; using the detected system browser instead.",
+    );
   }
 
   const externalNoVnc = Boolean(String(env.PORTAL_NOVNC_TARGET || "").trim());
@@ -160,8 +289,7 @@ function inspectRuntime() {
     requestedMode,
     loginMode,
     commands,
-    chromiumOverride,
-    chromiumOverrideExists,
+    browser,
     externalNoVnc,
     noVncWeb,
     hasDisplay: hasGraphicalDisplay,
@@ -264,6 +392,10 @@ if (checkOnly) process.exit(0);
 if (platform === "linux") {
   await startLinuxDisplay(report);
   if (report.loginMode === "novnc") await startLinuxNoVnc(report);
+}
+
+if (report.browser.source === "system" || report.browser.source === "override") {
+  env.PORTAL_CHROMIUM = report.browser.path;
 }
 
 env.PORTAL_LOGIN_MODE = report.loginMode;
