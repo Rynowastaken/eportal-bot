@@ -19,6 +19,16 @@ const ACTIVITY_PROXY_PASSWORD = String(
 );
 
 const sessions = new Map();
+const directHttpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 16,
+  maxFreeSockets: 4,
+});
+const directHttpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 16,
+  maxFreeSockets: 4,
+});
 
 function relayError(message, code = "ACTIVITY_RELAY_UNAVAILABLE") {
   const error = new Error(message);
@@ -296,6 +306,7 @@ function connectionFor(target) {
       port: 443,
       servername: ACTIVITY_HOST,
       hostHeader: ACTIVITY_HOST,
+      agent: directHttpsAgent,
     };
   }
 
@@ -306,6 +317,7 @@ function connectionFor(target) {
       port: 80,
       servername: undefined,
       hostHeader: ACTIVITY_IP,
+      agent: directHttpAgent,
     };
   }
 
@@ -335,7 +347,7 @@ async function requestOnce(
       ...headers,
       Host: connection.hostHeader,
       ...(cookies ? { Cookie: cookies } : {}),
-      Connection: "close",
+      Connection: tunnelSocket ? "close" : "keep-alive",
     };
 
     delete requestHeaders.host;
@@ -357,7 +369,9 @@ async function requestOnce(
               agent: false,
               createConnection: () => tunnelSocket,
             }
-          : {}),
+          : {
+              agent: connection.agent,
+            }),
         method,
         path: `${target.pathname}${target.search}`,
         headers: requestHeaders,
