@@ -391,7 +391,7 @@ async function openCleanLoginPage(session, reason) {
   if (current.pathname === "/sess_exceed.php") {
     bridgeLog("clearing stale ePortal cookies after sess_exceed", page);
     await browser.context.clearCookies({
-      domain: "eportal.nutc.edu.tw",
+      domain: /(^|\.)eportal\.nutc\.edu\.tw$/,
     });
   }
 
@@ -495,6 +495,7 @@ export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
     complete: false,
     error: null,
     lastSnapshotSignature: null,
+    stateRequestLogged: false,
   };
 
   active = session;
@@ -521,6 +522,11 @@ export async function getLoginBridgeState(token) {
     const error = new Error("Invalid or expired login bridge token.");
     error.code = "EPORTAL_LOGIN_BRIDGE_UNAUTHORIZED";
     throw error;
+  }
+
+  if (!active.stateRequestLogged) {
+    active.stateRequestLogged = true;
+    bridgeLog("client state polling connected");
   }
 
   return buildState();
