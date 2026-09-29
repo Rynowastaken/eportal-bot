@@ -2,42 +2,112 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="color-scheme" content="dark" />
     <title>登入 ePortal · NUTC Portal</title>
-    <link rel="stylesheet" href="/server-login.css?v=4" />
+    <script src="/tailwind-config.js"></script>
+    <script src="/vendor/tailwindcss-3.4.17.js"></script>
+    <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
-  <body>
-    <main class="login-shell">
-      <header class="login-header">
-        <button id="closeButton" class="back-button" type="button">← 返回</button>
-        <h1>登入 ePortal</h1>
+  <body
+    class="min-h-screen overflow-x-hidden bg-[#141018] font-sans text-[var(--foreground)] antialiased"
+  >
+    <div
+      id="portalBackdrop"
+      class="fixed inset-0 -z-20 bg-cover bg-center bg-fixed"
+      aria-hidden="true"
+    ></div>
+    <div
+      class="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,rgba(20,16,24,.12),rgba(20,16,24,.72))]"
+      aria-hidden="true"
+    ></div>
+
+    <main
+      class="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-3 px-4 py-4 sm:px-6 sm:py-5"
+    >
+      <header class="flex min-h-14 items-center gap-3">
+        <button
+          id="closeButton"
+          class="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.07] px-3 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+          type="button"
+        >
+          <i data-lucide="arrow-left" class="h-4 w-4"></i>
+          <span>返回</span>
+        </button>
+
+        <div class="min-w-0">
+          <p class="text-[11px] font-semibold tracking-[0.08em] text-[var(--muted)]">
+            NUTC Portal
+          </p>
+          <h1 class="truncate text-xl font-semibold tracking-[-0.035em]">
+            登入 ePortal
+          </h1>
+        </div>
       </header>
 
-      <section class="status-bar">
-        <span id="statusDot" class="status-dot checking"></span>
-        <strong id="statusTitle">準備登入…</strong>
+      <section
+        class="flex min-h-[52px] items-center gap-3 rounded-[18px] border border-white/[.12] bg-[rgba(12,10,14,.34)] px-4 shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
+      >
+        <span
+          id="statusDot"
+          class="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent)] shadow-[0_0_0_4px_rgba(255,255,255,.05)]"
+        ></span>
+        <strong id="statusTitle" class="text-sm font-semibold">準備登入…</strong>
       </section>
 
-      <section id="pageCard" class="page-card hidden">
-        <h2 id="pageTitle">ePortal</h2>
+      <section
+        id="pageCard"
+        class="hidden rounded-[20px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] sm:p-5"
+      >
+        <div class="flex items-center gap-3">
+          <div
+            class="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
+            aria-hidden="true"
+          >
+            <i data-lucide="key-round" class="h-5 w-5"></i>
+          </div>
+          <h2 id="pageTitle" class="truncate text-lg font-semibold tracking-[-0.025em]">
+            ePortal
+          </h2>
+        </div>
 
-        <div id="messageList" class="message-list"></div>
-        <div id="imageList" class="image-list"></div>
+        <div id="messageList" class="mt-4 grid gap-2 empty:hidden"></div>
+        <div id="imageList" class="mt-4 flex flex-wrap gap-3 empty:hidden"></div>
 
-        <form id="bridgeForm" autocomplete="on">
-          <div id="fieldList" class="field-list"></div>
-          <div id="actionList" class="action-list"></div>
+        <form id="bridgeForm" class="mt-4" autocomplete="on">
+          <div id="fieldList" class="grid gap-4"></div>
+          <div id="actionList" class="mt-5 grid gap-2 sm:grid-cols-2"></div>
         </form>
       </section>
 
-      <section id="errorCard" class="error-card hidden">
-        <h2>無法登入</h2>
-        <p id="errorMessage"></p>
-        <a href="/" class="primary-link">回到首頁</a>
+      <section
+        id="errorCard"
+        class="hidden rounded-[20px] border border-[#f07178]/20 bg-[rgba(12,10,14,.42)] p-5 text-center shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
+      >
+        <div
+          class="mx-auto grid h-11 w-11 place-items-center rounded-[14px] border border-[#f07178]/25 bg-[#f07178]/[.08] text-[#f4a0a5]"
+          aria-hidden="true"
+        >
+          <i data-lucide="triangle-alert" class="h-5 w-5"></i>
+        </div>
+        <h2 class="mt-3 text-lg font-semibold">無法登入</h2>
+        <p
+          id="errorMessage"
+          class="mx-auto mt-2 max-w-md text-sm font-medium leading-6 text-[var(--muted)]"
+        ></p>
+        <a
+          href="/"
+          class="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+        >
+          回到首頁
+        </a>
       </section>
     </main>
 
-    <script src="/server-login.js?v=6" type="module"></script>
+    <script src="/theme.js?v=1"></script>
+    <script src="/server-login.js?v=7" type="module"></script>
   </body>
 </html>
