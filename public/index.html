@@ -167,62 +167,6 @@
         </div>
       </header>
 
-      <section id="classScheduleSection" class="mt-5">
-        <div class="mb-3 flex items-end justify-between gap-3 px-1">
-          <div class="min-w-0">
-            <h2 class="text-sm font-semibold tracking-[-0.02em] text-[var(--muted)]">
-              本週課表
-            </h2>
-            <p
-              id="scheduleMeta"
-              class="mt-0.5 truncate text-[11px] font-medium text-[var(--faint)]"
-            >
-              等待 Server ePortal 狀態確認
-            </p>
-          </div>
-
-          <button
-            id="scheduleRefreshButton"
-            class="inline-flex min-h-[36px] shrink-0 items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.06] px-3 text-xs font-semibold text-[var(--muted)] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-not-allowed disabled:opacity-45"
-            type="button"
-            aria-label="重新整理課表"
-            title="重新整理課表"
-          >
-            <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-            <span class="hidden sm:inline">更新</span>
-          </button>
-        </div>
-
-        <div
-          id="classScheduleCard"
-          class="overflow-hidden rounded-[20px] border border-white/[.10] bg-[rgba(12,10,14,.30)] shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
-        >
-          <div class="overflow-x-auto overscroll-x-contain">
-            <div
-              id="scheduleGrid"
-              class="w-full"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              <div class="flex min-h-[180px] items-center justify-center gap-3 px-4 text-sm font-medium text-[var(--muted)]">
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4 animate-spin"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  aria-hidden="true"
-                >
-                  <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-                </svg>
-                <span>登入狀態確認後載入 AIS 課表</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="mt-5">
         <div class="mb-3 px-1">
           <h2 class="text-sm font-semibold tracking-[-0.02em] text-[var(--muted)]">
@@ -288,6 +232,120 @@
                 >
                   Waiting for the module manifest and the server-side ePortal session check.
                 </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section
+        id="studentOverviewGrid"
+        class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.75fr)_minmax(300px,.75fr)] lg:items-start"
+      >
+        <section id="classScheduleSection" class="order-2 min-w-0 lg:order-1">
+          <div class="mb-3 flex items-end justify-between gap-3 px-1">
+            <div class="min-w-0">
+              <h2 class="text-sm font-semibold tracking-[-0.02em] text-[var(--muted)]">
+                本週課表
+              </h2>
+              <p
+                id="scheduleMeta"
+                class="mt-0.5 truncate text-[11px] font-medium text-[var(--faint)]"
+              >
+                等待 Server ePortal 狀態確認
+              </p>
+            </div>
+
+            <button
+              id="scheduleRefreshButton"
+              class="inline-flex min-h-[36px] shrink-0 items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.06] px-3 text-xs font-semibold text-[var(--muted)] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-not-allowed disabled:opacity-45"
+              type="button"
+              aria-label="重新整理課表"
+              title="重新整理課表"
+            >
+              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              <span class="hidden sm:inline">更新</span>
+            </button>
+          </div>
+
+          <div
+            id="classScheduleCard"
+            class="overflow-hidden rounded-[20px] border border-white/[.10] bg-[rgba(12,10,14,.30)] shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
+          >
+            <div class="overflow-x-auto overscroll-x-contain">
+              <div
+                id="scheduleGrid"
+                class="w-full"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <div class="flex min-h-[180px] items-center justify-center gap-3 px-4 text-sm font-medium text-[var(--muted)]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    class="h-4 w-4 animate-spin"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                  </svg>
+                  <span>登入狀態確認後載入 AIS 課表</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="absenceListSection" class="order-1 min-w-0 lg:order-2">
+          <div class="mb-3 flex items-end justify-between gap-3 px-1">
+            <div class="min-w-0">
+              <h2 class="text-sm font-semibold tracking-[-0.02em] text-[var(--muted)]">
+                缺曠紀錄
+              </h2>
+              <p
+                id="absenceMeta"
+                class="mt-0.5 truncate text-[11px] font-medium text-[var(--faint)]"
+              >
+                等待 Server ePortal 狀態確認
+              </p>
+            </div>
+
+            <button
+              id="absenceRefreshButton"
+              class="inline-flex min-h-[36px] shrink-0 items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.06] px-3 text-xs font-semibold text-[var(--muted)] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-not-allowed disabled:opacity-45"
+              type="button"
+              aria-label="重新整理缺曠紀錄"
+              title="重新整理缺曠紀錄"
+            >
+              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              <span class="hidden sm:inline">更新</span>
+            </button>
+          </div>
+
+          <div
+            id="absenceListCard"
+            class="overflow-hidden rounded-[20px] border border-white/[.10] bg-[rgba(12,10,14,.30)] shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
+          >
+            <div
+              id="absenceListContent"
+              class="min-h-[180px] p-3 sm:p-4"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div class="flex min-h-[150px] items-center justify-center gap-3 px-3 text-center text-sm font-medium text-[var(--muted)]">
+                <svg
+                  viewBox="0 0 24 24"
+                  class="h-4 w-4 animate-spin"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                </svg>
+                <span>登入狀態確認後載入 AIS 缺曠紀錄</span>
               </div>
             </div>
           </div>
@@ -711,6 +769,6 @@
 
     <script src="/theme.js?v=4"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=41" type="module"></script>
+    <script src="/app.js?v=42" type="module"></script>
   </body>
 </html>
