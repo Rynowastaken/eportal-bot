@@ -63,22 +63,17 @@
           </div>
 
           <button
-            id="nativeLoginButton"
-            class="session-login focus-ring hidden"
+            id="serverLoginButton"
+            class="session-login focus-ring"
             type="button"
           >
-            <span>重新登入 Server ePortal</span>
+            <span>登入 Server ePortal</span>
             <span aria-hidden="true">↗</span>
           </button>
 
-          <a
-            id="remoteLoginButton"
-            class="session-login focus-ring hidden"
-            href="/remote-login/"
-          >
-            <span>Xpra fallback 已啟動</span>
-            <span aria-hidden="true">↗</span>
-          </a>
+          <p class="session-note">
+            使用原生 HTML Login Bridge；不串流桌面畫面，也不把 ePortal cookie 傳到此裝置。
+          </p>
         </div>
       </section>
 
