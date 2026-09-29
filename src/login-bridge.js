@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { EPORTAL_DASHBOARD, EPORTAL_HOME } from "./eportal.js";
+import { EPORTAL_DASHBOARD, EPORTAL_HOME, EPORTAL_LOGIN } from "./eportal.js";
 import {
   STUDENT_BUTTON_SELECTOR,
   openLoginBridgeSession,
@@ -349,13 +349,63 @@ async function buildState() {
     };
   }
 
+  const pageState = await extractState(active.page);
+  const signature = [
+    pageState.hostname,
+    pageState.path,
+    pageState.controls.length,
+    pageState.images.length,
+  ].join(":");
+
+  if (active.lastSnapshotSignature !== signature) {
+    active.lastSnapshotSignature = signature;
+    bridgeLog(
+      `snapshot ready: ${pageState.controls.length} control(s), ${pageState.images.length} image(s)`,
+      active.page,
+    );
+  }
+
   return {
     active: true,
     complete: false,
     phase: "ready",
     expiresAt: active.expiresAt,
-    page: await extractState(active.page),
+    page: pageState,
   };
+}
+
+async function pageHasLoginControls(page) {
+  return (
+    (await page.locator('input[type="password"]').count()) > 0 ||
+    (await page.locator('input[placeholder*="密碼"]').count()) > 0
+  );
+}
+
+async function openCleanLoginPage(session, reason) {
+  const { page, browser } = session;
+  session.phase = "opening-login";
+
+  bridgeLog(`opening clean ePortal login: ${reason}`, page);
+
+  const current = new URL(page.url());
+  if (current.pathname === "/sess_exceed.php") {
+    bridgeLog("clearing stale ePortal cookies after sess_exceed", page);
+    await browser.context.clearCookies({
+      domain: "eportal.nutc.edu.tw",
+    });
+  }
+
+  await navigateForBridge(page, EPORTAL_LOGIN, "opening ePortal login");
+
+  await page
+    .locator(
+      'input[type="password"], input[placeholder*="密碼"], button, input[type="submit"]',
+    )
+    .first()
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .catch(() => {
+      bridgeLog("login controls did not become visible within 5s; extracting current DOM", page);
+    });
 }
 
 async function initializeLoginBridge(session) {
@@ -378,12 +428,33 @@ async function initializeLoginBridge(session) {
       return;
     }
 
-    if (!allowedPageUrl(page.url())) {
-      session.phase = "opening-login";
-      await navigateForBridge(page, EPORTAL_HOME, "opening ePortal login");
+    const current = new URL(page.url());
+
+    if (current.pathname === "/sess_exceed.php") {
+      await openCleanLoginPage(session, "session exceeded page detected");
+    } else if (!(await pageHasLoginControls(page))) {
+      if (!allowedPageUrl(page.url())) {
+        session.phase = "opening-login";
+        await navigateForBridge(page, EPORTAL_HOME, "opening ePortal home");
+      }
+
+      if (!(await pageHasLoginControls(page))) {
+        await openCleanLoginPage(
+          session,
+          `no usable login controls on ${pageLocation(page)}`,
+        );
+      }
     }
 
     await ensureAllowed(page);
+
+    if (!(await pageHasLoginControls(page))) {
+      const error = new Error(
+        `ePortal login controls were not found on ${pageLocation(page)}.`,
+      );
+      error.code = "EPORTAL_LOGIN_BRIDGE_UNSUPPORTED";
+      throw error;
+    }
 
     session.phase = "ready";
     bridgeLog("login form bridge is ready", page);
@@ -423,6 +494,7 @@ export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
     phase: "starting",
     complete: false,
     error: null,
+    lastSnapshotSignature: null,
   };
 
   active = session;
