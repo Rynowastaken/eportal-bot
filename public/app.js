@@ -308,14 +308,7 @@ function consumeMobileReturn() {
 }
 
 function openModule(module) {
-  const opened = window.open(module.launchPath, "_blank", "noopener");
-
-  if (!opened) {
-    showDialog(
-      "瀏覽器阻擋了新分頁",
-      "請允許這個 Dashboard 開啟新分頁，再重新點一次系統卡片。",
-    );
-  }
+  window.location.assign(module.launchPath);
 }
 
 function renderModules(modules) {
@@ -345,8 +338,8 @@ function renderModules(modules) {
     launch.className = "module-launch";
     launch.innerHTML =
       module.serverHandoff
-        ? `<span>由 Server 產生短效 SSO handoff</span><span aria-hidden="true">↗</span>`
-        : `<span>開啟系統</span><span aria-hidden="true">↗</span>`;
+        ? `<span>由 Server 產生短效 SSO handoff</span><span aria-hidden="true">→</span>`
+        : `<span>開啟系統</span><span aria-hidden="true">→</span>`;
 
     copy.append(title, description, launch);
     button.append(icon, copy);
