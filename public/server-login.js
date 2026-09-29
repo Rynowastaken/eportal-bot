@@ -7,7 +7,6 @@ const imageList = document.querySelector("#imageList");
 const fieldList = document.querySelector("#fieldList");
 const actionList = document.querySelector("#actionList");
 const bridgeForm = document.querySelector("#bridgeForm");
-const doneCard = document.querySelector("#doneCard");
 const errorCard = document.querySelector("#errorCard");
 const errorMessage = document.querySelector("#errorMessage");
 const closeButton = document.querySelector("#closeButton");
@@ -211,15 +210,27 @@ function render(state) {
   if (state.complete) {
     pageCard.classList.add("hidden");
     errorCard.classList.add("hidden");
-    doneCard.classList.remove("hidden");
     setStatus("valid", "登入完成");
     disposeImages();
+
+    setTimeout(() => {
+      if (window.opener && !window.opener.closed) {
+        window.close();
+
+        // If the browser refuses to close the tab, fall back to the Dashboard.
+        setTimeout(() => {
+          if (!window.closed) location.replace("/");
+        }, 120);
+        return;
+      }
+
+      location.replace("/");
+    }, 250);
     return;
   }
 
   if (state.active && !state.page) {
     pageCard.classList.add("hidden");
-    doneCard.classList.add("hidden");
     errorCard.classList.add("hidden");
 
     const phaseText = {
@@ -243,7 +254,6 @@ function render(state) {
     throw new Error("Login bridge 已結束或過期。");
   }
 
-  doneCard.classList.add("hidden");
   errorCard.classList.add("hidden");
   pageCard.classList.remove("hidden");
 
@@ -344,7 +354,6 @@ function showError(message) {
   }
 
   pageCard.classList.add("hidden");
-  doneCard.classList.add("hidden");
   errorCard.classList.remove("hidden");
   errorMessage.textContent = message;
   setStatus("invalid", "登入失敗");
