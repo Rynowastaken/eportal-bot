@@ -147,7 +147,10 @@ function connectionFor(target) {
   if (target.hostname === ACTIVITY_HOST) {
     return {
       client: https,
-      hostname: ACTIVITY_IP,
+      // Do not assume vote.nutc.edu.tw is served by the legacy verify IP.
+      // Let the Raspberry Pi resolver choose the current address for the
+      // HTTPS service while preserving normal TLS SNI / Host validation.
+      hostname: ACTIVITY_HOST,
       port: 443,
       servername: ACTIVITY_HOST,
       hostHeader: ACTIVITY_HOST,
@@ -244,7 +247,7 @@ function requestOnce(
     request.on("error", (error) => {
       reject(
         relayError(
-          `Activity relay could not reach the server-side upstream (${error.code || error.message}).`,
+          `Activity relay could not reach ${target.hostname}:${connection.port} from the server (${error.code || error.message}).`,
         ),
       );
     });
