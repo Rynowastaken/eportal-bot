@@ -1,3 +1,4 @@
+const motion = window.NutcMotion;
 const statusDot = document.querySelector("#statusDot");
 const statusTitle = document.querySelector("#statusTitle");
 const pageCard = document.querySelector("#pageCard");
@@ -18,6 +19,9 @@ let startupPollTimer = null;
 let completionPollTimer = null;
 let completionPollUntil = 0;
 const objectUrls = new Set();
+let lastStatusKind = "";
+let lastStatusTitle = "";
+let pageCardShown = false;
 
 function renderIcons() {
   if (window.lucide) {
@@ -32,8 +36,23 @@ function setStatus(kind, title) {
     invalid: "#f07178",
   };
 
+  const changed =
+    kind !== lastStatusKind ||
+    title !== lastStatusTitle;
+
   statusDot.style.backgroundColor = colors[kind] || "var(--accent)";
   statusTitle.textContent = title;
+
+  if (changed) {
+    lastStatusKind = kind;
+    lastStatusTitle = title;
+    void motion?.pop?.(statusDot, { duration: 180 });
+    void motion?.enter?.(statusTitle, {
+      duration: 190,
+      y: 4,
+      scale: 0.995,
+    });
+  }
 }
 
 function clearCompletionPolling() {
@@ -155,6 +174,11 @@ async function loadImages(images) {
       image.width = item.width || 0;
       image.height = item.height || 0;
       imageList.append(image);
+      void motion?.enter?.(image, {
+        duration: 240,
+        y: 6,
+        scale: 0.985,
+      });
     } catch {
       // Optional image; form controls remain usable without it.
     }
@@ -311,10 +335,18 @@ function render(state) {
 
   if (state.complete) {
     clearCompletionPolling();
-    pageCard.classList.add("hidden");
     errorCard.classList.add("hidden");
     setStatus("valid", "登入完成");
     disposeImages();
+
+    if (!pageCard.classList.contains("hidden")) {
+      void motion?.exit?.(pageCard, {
+        duration: 180,
+        y: 8,
+        scale: 0.985,
+      });
+    }
+
     leaveLoginPage();
     return;
   }
@@ -345,8 +377,18 @@ function render(state) {
   }
 
   errorCard.classList.add("hidden");
+  const firstReveal = !pageCardShown;
   pageCard.classList.remove("hidden");
+  pageCardShown = true;
   pageTitle.textContent = state.page.title || "ePortal";
+
+  if (firstReveal) {
+    void motion?.enter?.(pageCard, {
+      duration: 320,
+      y: 12,
+      scale: 0.98,
+    });
+  }
 
   messageList.replaceChildren();
 
@@ -393,9 +435,22 @@ function render(state) {
     const enter = document.createElement("button");
     enter.type = "submit";
     enter.className =
-      "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
+      "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
     enter.textContent = "繼續";
     actionList.append(enter);
+  }
+
+  if (firstReveal) {
+    void motion?.stagger?.(
+      [...fieldList.children, ...actionList.children],
+      {
+        step: 42,
+        duration: 300,
+        y: 8,
+        scale: 0.99,
+        maxDelay: 210,
+      },
+    );
   }
 
   void loadImages(state.page.images || []);
@@ -461,6 +516,11 @@ function showError(message) {
   pageCard.classList.add("hidden");
   errorCard.classList.remove("hidden");
   errorMessage.textContent = message;
+  void motion?.enter?.(errorCard, {
+    duration: 260,
+    y: 10,
+    scale: 0.985,
+  });
   setStatus("invalid", "登入失敗");
   disposeImages();
   renderIcons();
@@ -496,6 +556,17 @@ closeButton.addEventListener("click", async () => {
 (async () => {
   await window.NutcTheme.init();
   renderIcons();
+
+  void motion?.stagger?.(
+    document.querySelectorAll("main > header, main > section"),
+    {
+      step: 55,
+      duration: 320,
+      y: 8,
+      scale: 0.99,
+      maxDelay: 165,
+    },
+  );
 
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
   token = fragment.get("token") || "";
