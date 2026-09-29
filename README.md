@@ -4,7 +4,7 @@
 
 目前有兩條彼此獨立的 ePortal session：
 
-- **Server session**：Playwright persistent profile，供背景工作、排程，以及所有 Dashboard 模組頁面的資料載入使用。
+- **Server session**：Playwright persistent profile，供背景工作、排程，以及產生各模組的短效 SSO handoff 使用。
 - **Client session**：目前瀏覽器自己的 ePortal session；Userscript 只做便利的登入狀態通知與 Dashboard bridge，不會把 cookie 傳給 server。
 
 ## Install
@@ -56,37 +56,33 @@ error
 
 Dashboard 也會顯示 server session 是否需要重新登入。
 
-## Server-backed module views
+## Short-lived SSO handoff launches
 
-All Dashboard cards now open local server-backed views by default.
-
-- 學生管理 → `/student.html`
-- WebMail / 活動報名 / 學習歷程 / TronClass → `/module.html?id=<module>`
-
-Generic module data is loaded from:
+Every Dashboard card points to:
 
 ```text
-GET /api/modules/:id/overview
+/go/:module
 ```
 
-Student Management keeps its compatibility endpoint:
+The browser does not go to ePortal first. Instead the server:
 
-```text
-GET /api/ais/overview
-```
+1. opens the saved `.eportal-profile/` headlessly,
+2. verifies that the server-side ePortal session is still valid,
+3. requests the selected ePortal module with automatic redirects disabled,
+4. follows only redirects that stay inside `https://eportal.nutc.edu.tw`,
+5. stops at the first external HTTPS redirect,
+6. immediately returns a `302` to the client for that external SSO handoff.
 
-The server uses `.eportal-profile/` with headless Playwright, enters the selected
-ePortal module, and returns only sanitized visible headings/tables/text from the
-rendered target page. Browser cookies, ePortal cookies, JWTs, SSO URLs, and Playwright
-storage are not returned to the client.
+Because the server stops before following the external redirect, it does not consume the
+short-lived target-system handoff itself. The incognito/guest browser receives that
+handoff and the target system can establish its own browser session.
 
-This means the Dashboard module views work from Incognito / guest browsers as long as
-the Dashboard itself is accessible through Cloudflare Access and the saved server
-ePortal session is valid.
+The handoff URL is never persisted or logged by this application. Redirect responses
+use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
 
-Each internal module page also exposes an **開啟官方系統** link. That link opens the
-real school/external system in the current browser and therefore may still require
-that browser's own login.
+If a module does not expose its SSO transition as an HTTP redirect, `/go/:module`
+returns a handoff-unavailable error instead of attempting to copy server cookies into
+the browser.
 
 ## Headless/background use
 
@@ -148,11 +144,11 @@ Server
 
 Client browser
     ↓
-  official ePortal
-    ↓
-  optional Userscript bridge
-    ↓
   Dashboard /go/:module
+    ↓
+  server generates fresh SSO handoff
+    ↓
+  target system establishes client session
 ```
 
 Server 與 client session 完全分離。
