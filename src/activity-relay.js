@@ -1,12 +1,22 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import https from "node:https";
+import tls from "node:tls";
 
 const ACTIVITY_HOST = "vote.nutc.edu.tw";
 const ACTIVITY_IP = "163.17.131.167";
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_REQUEST_BODY = 4 * 1024 * 1024;
 const MAX_RESPONSE_BODY = 16 * 1024 * 1024;
+const ACTIVITY_PROXY_URL = String(
+  process.env.NUTC_ACTIVITY_PROXY || "",
+).trim();
+const ACTIVITY_PROXY_USER = String(
+  process.env.NUTC_ACTIVITY_PROXY_USER || "",
+);
+const ACTIVITY_PROXY_PASSWORD = String(
+  process.env.NUTC_ACTIVITY_PROXY_PASSWORD || "",
+);
 
 const sessions = new Map();
 
@@ -143,6 +153,138 @@ function cookieHeader(session, target) {
   return pairs.join("; ");
 }
 
+function activityProxy() {
+  if (!ACTIVITY_PROXY_URL) return null;
+
+  let proxy;
+  try {
+    proxy = new URL(ACTIVITY_PROXY_URL);
+  } catch {
+    throw relayError(
+      "NUTC_ACTIVITY_PROXY must be a valid http:// proxy URL.",
+      "ACTIVITY_PROXY_CONFIG_INVALID",
+    );
+  }
+
+  if (proxy.protocol !== "http:") {
+    throw relayError(
+      "NUTC_ACTIVITY_PROXY currently supports only an http:// CONNECT proxy.",
+      "ACTIVITY_PROXY_CONFIG_INVALID",
+    );
+  }
+
+  const username =
+    ACTIVITY_PROXY_USER ||
+    (proxy.username ? decodeURIComponent(proxy.username) : "");
+  const password =
+    ACTIVITY_PROXY_PASSWORD ||
+    (proxy.password ? decodeURIComponent(proxy.password) : "");
+
+  proxy.username = "";
+  proxy.password = "";
+
+  return {
+    hostname: proxy.hostname,
+    port: Number(proxy.port || 80),
+    username,
+    password,
+  };
+}
+
+function openHttpsProxyTunnel(target, timeout) {
+  const proxy = activityProxy();
+  if (!proxy) return Promise.resolve(null);
+
+  return new Promise((resolve, reject) => {
+    const headers = {
+      Host: `${target.hostname}:443`,
+      Connection: "close",
+    };
+
+    if (proxy.username || proxy.password) {
+      headers["Proxy-Authorization"] =
+        "Basic " +
+        Buffer.from(
+          `${proxy.username}:${proxy.password}`,
+          "utf8",
+        ).toString("base64");
+    }
+
+    const connect = http.request({
+      hostname: proxy.hostname,
+      port: proxy.port,
+      method: "CONNECT",
+      path: `${target.hostname}:443`,
+      headers,
+    });
+
+    connect.setTimeout(timeout, () => {
+      connect.destroy(
+        relayError("Activity proxy CONNECT timed out."),
+      );
+    });
+
+    connect.once("connect", (response, socket, head) => {
+      if (response.statusCode !== 200) {
+        socket.destroy();
+
+        const code =
+          response.statusCode === 407
+            ? "ACTIVITY_PROXY_AUTH_REQUIRED"
+            : "ACTIVITY_PROXY_CONNECT_FAILED";
+
+        reject(
+          relayError(
+            `Activity proxy CONNECT failed with HTTP ${response.statusCode || 0}.`,
+            code,
+          ),
+        );
+        return;
+      }
+
+      if (head?.length) socket.unshift(head);
+
+      const secureSocket = tls.connect({
+        socket,
+        servername: target.hostname,
+      });
+
+      secureSocket.setTimeout(timeout, () => {
+        secureSocket.destroy(
+          relayError("Activity proxy TLS tunnel timed out."),
+        );
+      });
+
+      secureSocket.once("secureConnect", () => {
+        secureSocket.setTimeout(0);
+        resolve(secureSocket);
+      });
+
+      secureSocket.once("error", (error) => {
+        reject(
+          relayError(
+            `Activity proxy TLS tunnel failed (${error.code || error.message}).`,
+            "ACTIVITY_PROXY_TLS_FAILED",
+          ),
+        );
+      });
+    });
+
+    connect.once("error", (error) => {
+      reject(
+        error?.code?.startsWith?.("ACTIVITY_")
+          ? error
+          : relayError(
+              `Activity proxy could not be reached (${error.code || error.message}).`,
+              "ACTIVITY_PROXY_UNREACHABLE",
+            ),
+      );
+    });
+
+    connect.end();
+  });
+}
+
 function connectionFor(target) {
   if (target.hostname === ACTIVITY_HOST) {
     return {
@@ -170,7 +312,7 @@ function connectionFor(target) {
   throw relayError("Activity relay target is not allowlisted.");
 }
 
-function requestOnce(
+async function requestOnce(
   session,
   rawUrl,
   {
@@ -183,6 +325,10 @@ function requestOnce(
   const target = allowedTarget(rawUrl);
   const connection = connectionFor(target);
   const cookies = cookieHeader(session, target);
+  const tunnelSocket =
+    target.hostname === ACTIVITY_HOST
+      ? await openHttpsProxyTunnel(target, timeout)
+      : null;
 
   return new Promise((resolve, reject) => {
     const requestHeaders = {
@@ -206,6 +352,12 @@ function requestOnce(
         hostname: connection.hostname,
         port: connection.port,
         servername: connection.servername,
+        ...(tunnelSocket
+          ? {
+              agent: false,
+              createConnection: () => tunnelSocket,
+            }
+          : {}),
         method,
         path: `${target.pathname}${target.search}`,
         headers: requestHeaders,
@@ -468,7 +620,9 @@ export async function startActivityRelay(handoff) {
   };
 
   console.log(
-    "[activity-relay] consuming one-time Activity SSO handoff on the server",
+    ACTIVITY_PROXY_URL
+      ? "[activity-relay] consuming one-time Activity SSO handoff via configured NUTC proxy"
+      : "[activity-relay] consuming one-time Activity SSO handoff on the server",
   );
 
   const landing = await followInitialHandoff(session, handoff);
