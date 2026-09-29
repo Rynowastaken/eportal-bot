@@ -7,11 +7,23 @@ const serverStatusChevron = document.querySelector("#serverStatusChevron");
 const serverStatusMenu = document.querySelector("#serverStatusMenu");
 const serverLoginAction = document.querySelector("#serverLoginAction");
 const serverLogoutAction = document.querySelector("#serverLogoutAction");
+const themeSettingsAction = document.querySelector("#themeSettingsAction");
 const backgroundAction = document.querySelector("#backgroundAction");
 const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
 const backgroundInput = document.querySelector("#backgroundInput");
+const themeDialog = document.querySelector("#themeDialog");
+const themeDialogClose = document.querySelector("#themeDialogClose");
+const themeSchemeOptions = document.querySelector("#themeSchemeOptions");
+const themePreview = document.querySelector("#themePreview");
+const themeColorfulness = document.querySelector("#themeColorfulness");
+const themeColorfulnessValue = document.querySelector("#themeColorfulnessValue");
+const themeBrightness = document.querySelector("#themeBrightness");
+const themeBrightnessValue = document.querySelector("#themeBrightnessValue");
+const themeReset = document.querySelector("#themeReset");
+const themeApply = document.querySelector("#themeApply");
 
 let modulesCache = [];
+let stagedThemeSettings = null;
 
 async function api(path) {
   const response = await fetch(path, {
@@ -40,6 +52,99 @@ function syncThemeMenu() {
   );
   clearBackgroundAction.classList.toggle("hidden", !showClearBackground);
   clearBackgroundAction.classList.toggle("flex", showClearBackground);
+}
+
+function formatThemeFactor(value) {
+  return Number(value)
+    .toFixed(2)
+    .replace(/\.?0+$/, "");
+}
+
+function renderThemePreview() {
+  if (!stagedThemeSettings) return;
+
+  const palette =
+    window.NutcTheme.previewSettings(stagedThemeSettings);
+
+  themePreview.replaceChildren();
+
+  for (const color of palette) {
+    const swatch = document.createElement("span");
+    swatch.style.backgroundColor = color;
+    themePreview.append(swatch);
+  }
+
+  themeColorfulness.value = stagedThemeSettings.colorfulness;
+  themeBrightness.value = stagedThemeSettings.brightness;
+  themeColorfulnessValue.value = formatThemeFactor(
+    stagedThemeSettings.colorfulness,
+  );
+  themeBrightnessValue.value = formatThemeFactor(
+    stagedThemeSettings.brightness,
+  );
+
+  for (const button of themeSchemeOptions.querySelectorAll(
+    "[data-theme-scheme]",
+  )) {
+    const selected =
+      button.dataset.themeScheme ===
+      stagedThemeSettings.colorScheme;
+
+    button.setAttribute("aria-checked", String(selected));
+    button.classList.toggle(
+      "border-[var(--primary-ring)]",
+      selected,
+    );
+    button.classList.toggle(
+      "bg-[var(--primary-soft)]",
+      selected,
+    );
+    button.classList.toggle(
+      "text-[var(--foreground)]",
+      selected,
+    );
+    button.classList.toggle("border-white/[.12]", !selected);
+    button.classList.toggle("bg-white/[.05]", !selected);
+    button.classList.toggle("text-[var(--muted)]", !selected);
+  }
+}
+
+function renderThemeSchemes() {
+  themeSchemeOptions.replaceChildren();
+
+  for (const scheme of window.NutcTheme.schemes()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.role = "radio";
+    button.dataset.themeScheme = scheme.id;
+    button.className =
+      "min-h-[46px] rounded-xl border px-3 py-2 text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
+    button.textContent = scheme.name;
+    button.addEventListener("click", () => {
+      stagedThemeSettings.colorScheme = scheme.id;
+      renderThemePreview();
+    });
+    themeSchemeOptions.append(button);
+  }
+}
+
+function openThemeDialog() {
+  stagedThemeSettings = {
+    ...window.NutcTheme.settings(),
+  };
+  renderThemeSchemes();
+  renderThemePreview();
+  renderIcons();
+  setServerMenuOpen(false);
+
+  if (!themeDialog.open) {
+    themeDialog.showModal();
+  }
+}
+
+function closeThemeDialog() {
+  if (themeDialog.open) themeDialog.close();
+  stagedThemeSettings = null;
 }
 
 function setServerStatus(status) {
@@ -182,6 +287,53 @@ serverStatusButton.addEventListener("click", (event) => {
 
 serverLoginAction.addEventListener("click", () => {
   window.location.assign("/server-login/");
+});
+
+themeSettingsAction.addEventListener("click", () => {
+  openThemeDialog();
+});
+
+themeDialogClose.addEventListener("click", () => {
+  closeThemeDialog();
+});
+
+themeDialog.addEventListener("click", (event) => {
+  if (event.target === themeDialog) {
+    closeThemeDialog();
+  }
+});
+
+themeDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeThemeDialog();
+});
+
+themeColorfulness.addEventListener("input", () => {
+  if (!stagedThemeSettings) return;
+  stagedThemeSettings.colorfulness = Number(themeColorfulness.value);
+  renderThemePreview();
+});
+
+themeBrightness.addEventListener("input", () => {
+  if (!stagedThemeSettings) return;
+  stagedThemeSettings.brightness = Number(themeBrightness.value);
+  renderThemePreview();
+});
+
+themeReset.addEventListener("click", () => {
+  stagedThemeSettings = {
+    ...window.NutcTheme.defaultSettings(),
+  };
+  renderThemePreview();
+});
+
+themeApply.addEventListener("click", () => {
+  if (!stagedThemeSettings) return;
+
+  window.NutcTheme.applySettings(stagedThemeSettings);
+  renderModules(modulesCache);
+  syncThemeMenu();
+  closeThemeDialog();
 });
 
 backgroundAction.addEventListener("click", () => {
