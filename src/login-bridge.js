@@ -98,10 +98,21 @@ async function loginComplete(page) {
     (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
   return (
+    url.protocol === "https:" &&
     url.hostname === dashboardUrl.hostname &&
-    url.pathname.startsWith("/nutc_dashboard/") &&
     hasStudentButton
   );
+}
+
+async function waitForLoginCompletion(page, timeoutMs = 7_000) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await loginComplete(page)) return true;
+    await page.waitForTimeout(250);
+  }
+
+  return loginComplete(page);
 }
 
 async function ensureAllowed(page) {
@@ -614,12 +625,34 @@ export async function applyLoginBridgeAction(token, action = {}) {
     }
   }
 
+  let loginSubmit = false;
+
   if (typeof action.activate === "string" && /^control-\d+$/.test(action.activate)) {
     const locator = active.page.locator(
       `[data-nutc-login-bridge-key="${action.activate}"]`,
     );
 
     if ((await locator.count()) === 1) {
+      const metadata = await locator.evaluate((element) => ({
+        tag: element.tagName.toLowerCase(),
+        type: String(element.getAttribute("type") || "").toLowerCase(),
+        text: String(
+          element.innerText ||
+          element.value ||
+          element.textContent ||
+          "",
+        ).trim().slice(0, 80),
+      }));
+
+      loginSubmit =
+        metadata.type === "submit" ||
+        /登入|login|sign\s*in/i.test(metadata.text);
+
+      bridgeLog(
+        loginSubmit ? "login submit activated" : "form action activated",
+        active.page,
+      );
+
       await locator.click({ timeout: 8_000 });
 
       await active.page
@@ -627,10 +660,26 @@ export async function applyLoginBridgeAction(token, action = {}) {
         .catch(() => {});
     }
   } else if (action.pressEnter === true) {
+    loginSubmit = true;
+    bridgeLog("login form submitted with Enter", active.page);
     await active.page.keyboard.press("Enter");
   }
 
-  await active.page.waitForTimeout(450);
+  if (loginSubmit) {
+    const complete = await waitForLoginCompletion(active.page);
+
+    if (complete) {
+      bridgeLog("login completion detected after submit", active.page);
+    } else {
+      bridgeLog(
+        "login submit settled without authenticated marker; returning current form",
+        active.page,
+      );
+    }
+  } else {
+    await active.page.waitForTimeout(450);
+  }
+
   await ensureAllowed(active.page);
 
   return buildState();
