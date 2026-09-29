@@ -329,6 +329,11 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        if (error?.code === "EPORTAL_HANDOFF_POST_REQUIRED") {
+          sendError(res, 502, error.message, error.code);
+          return;
+        }
+
         if (error?.code === "EPORTAL_PROFILE_BUSY") {
           sendError(
             res,
