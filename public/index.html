@@ -285,7 +285,13 @@
               class="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50"
               type="button"
             >
-              <i id="debugRestartIcon" data-lucide="rotate-cw" class="h-4 w-4"></i>
+              <span
+                id="debugRestartIcon"
+                class="inline-flex h-4 w-4 items-center justify-center"
+                aria-hidden="true"
+              >
+                <i data-lucide="rotate-cw" class="h-4 w-4"></i>
+              </span>
               <span>Restart</span>
             </button>
           </div>
@@ -430,6 +436,6 @@
 
     <script src="/theme.js?v=3"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=29" type="module"></script>
+    <script src="/app.js?v=30" type="module"></script>
   </body>
 </html>
