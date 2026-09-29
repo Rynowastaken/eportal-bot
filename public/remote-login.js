@@ -100,7 +100,7 @@ function renderStatus(status) {
     setStatus(
       "checking",
       "Remote Login 已啟動",
-      "輸入 SSH 終端顯示的一次性 token 後即可控制 Server Chromium。",
+      "輸入 SSH 終端顯示的短效 token 後即可控制 Server Chromium。",
     );
     return;
   }
