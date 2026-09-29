@@ -81,6 +81,11 @@ button {
   letter-spacing: -0.035em;
 }
 
+.server-menu {
+  position: relative;
+  z-index: 20;
+}
+
 .server-status {
   display: inline-flex;
   align-items: center;
@@ -100,6 +105,73 @@ button {
 .server-status:hover {
   background: rgba(255, 255, 255, 0.09);
   border-color: var(--border-hi);
+}
+
+.status-chevron {
+  width: 16px;
+  height: 16px;
+  margin-left: 0.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.55;
+  transition: transform 0.16s ease;
+}
+
+.server-status[aria-expanded="true"] .status-chevron {
+  transform: rotate(180deg);
+}
+
+.status-menu {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  width: 10.5rem;
+  padding: 0.35rem;
+  background: rgba(22, 17, 26, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+.status-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  padding: 0.62rem 0.7rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.status-menu button:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.status-menu button.danger {
+  color: #f4a0a5;
+}
+
+.status-menu button.danger:hover {
+  background: rgba(240, 113, 120, 0.1);
+}
+
+.status-menu button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.hidden {
+  display: none !important;
 }
 
 .status-dot {
