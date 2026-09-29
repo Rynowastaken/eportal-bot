@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=17" />
+    <link rel="stylesheet" href="/app.css?v=18" />
   </head>
   <body>
     <main class="app-shell">
@@ -15,15 +15,41 @@
           <h1>NUTC Portal</h1>
         </div>
 
-        <button
-          id="serverStatusButton"
-          class="server-status focus-ring"
-          type="button"
-          aria-label="Server ePortal 登入狀態"
-        >
-          <span id="serverStatusDot" class="status-dot checking"></span>
-          <span id="serverStatusText">檢查中</span>
-        </button>
+        <div class="server-menu">
+          <button
+            id="serverStatusButton"
+            class="server-status focus-ring"
+            type="button"
+            aria-label="Server ePortal 登入狀態"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            <span id="serverStatusDot" class="status-dot checking"></span>
+            <span id="serverStatusText">檢查中</span>
+            <svg class="status-chevron" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M6 8l4 4 4-4" />
+            </svg>
+          </button>
+
+          <div
+            id="serverStatusMenu"
+            class="status-menu hidden"
+            role="menu"
+            aria-label="ePortal 選單"
+          >
+            <button id="serverLoginAction" type="button" role="menuitem">
+              重新登入
+            </button>
+            <button
+              id="serverLogoutAction"
+              class="danger"
+              type="button"
+              role="menuitem"
+            >
+              登出
+            </button>
+          </div>
+        </div>
       </header>
 
       <section class="systems-heading">
@@ -33,6 +59,6 @@
       <section id="moduleGrid" class="module-grid" aria-live="polite"></section>
     </main>
 
-    <script src="/app.js?v=18" type="module"></script>
+    <script src="/app.js?v=19" type="module"></script>
   </body>
 </html>
