@@ -1187,10 +1187,9 @@ function absenceItemAccent(item, index) {
   ];
   const usable = palette.slice(0, 4).filter(Boolean);
   const source = [
-    item?.type,
+    item?.status,
     item?.course,
-    item?.date,
-    item?.period,
+    item?.className,
     index,
   ]
     .filter((value) => value !== undefined && value !== null)
@@ -1252,6 +1251,33 @@ function renderAbsenceList() {
   absenceListContent.setAttribute("aria-busy", "false");
   absenceListContent.replaceChildren();
 
+  const summaryEntries = Object.entries(absenceListData.summary || {}).filter(
+    ([, count]) => Number(count) > 0,
+  );
+
+  if (summaryEntries.length) {
+    const summary = document.createElement("div");
+    summary.className =
+      "mb-3 flex flex-wrap gap-1.5 rounded-[14px] border border-white/[.08] bg-white/[.025] p-2.5";
+
+    summaryEntries.forEach(([label, count], index) => {
+      const accent = absenceItemAccent(
+        { status: label, course: label },
+        index,
+      );
+      const chip = document.createElement("span");
+      chip.className =
+        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold";
+      chip.style.color = accent;
+      chip.style.borderColor = rgba(accent, 0.28);
+      chip.style.backgroundColor = rgba(accent, 0.1);
+      chip.textContent = `${label} ${count}`;
+      summary.append(chip);
+    });
+
+    absenceListContent.append(summary);
+  }
+
   const list = document.createElement("div");
   list.className = "grid gap-2.5";
 
@@ -1264,49 +1290,55 @@ function renderAbsenceList() {
     row.style.background =
       `linear-gradient(115deg, ${rgba(accent, 0.07)} 0%, rgba(255,255,255,.025) 78%)`;
 
-    const top = document.createElement("div");
-    top.className = "flex min-w-0 items-start justify-between gap-2";
-
-    const titleWrap = document.createElement("div");
-    titleWrap.className = "min-w-0 flex-1";
-
     const course = document.createElement("strong");
     course.className =
       "block break-words text-sm font-semibold leading-5 text-[var(--foreground)]";
-    course.textContent =
-      item.course ||
-      item.note ||
-      item.cells?.filter(Boolean).slice(0, 2).join(" · ") ||
-      "缺曠紀錄";
+    course.textContent = item.course || "未命名課程";
 
-    const date = document.createElement("p");
-    date.className =
+    const meta = document.createElement("p");
+    meta.className =
       "mt-1 text-[11px] font-medium leading-4 text-[var(--muted)]";
-    date.textContent = [item.date, item.weekday, item.period]
+    meta.textContent = [
+      item.className,
+      item.teacher,
+      item.credits,
+      item.required,
+    ]
       .filter(Boolean)
       .join(" · ");
 
-    titleWrap.append(course);
-    if (date.textContent) titleWrap.append(date);
+    row.append(course);
+    if (meta.textContent) row.append(meta);
 
-    const type = document.createElement("span");
-    type.className =
-      "shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold";
-    type.style.color = accent;
-    type.style.borderColor = rgba(accent, 0.28);
-    type.style.backgroundColor = rgba(accent, 0.11);
-    type.textContent = item.type || "紀錄";
+    const statuses = Array.isArray(item.statusLines) && item.statusLines.length
+      ? item.statusLines
+      : item.status
+        ? [item.status]
+        : [];
 
-    top.append(titleWrap, type);
-    row.append(top);
+    if (statuses.length) {
+      const statusWrap = document.createElement("div");
+      statusWrap.className = "mt-2.5 flex flex-wrap gap-1.5";
 
-    const detailParts = [item.teacher, item.note].filter(Boolean);
-    if (detailParts.length) {
-      const detail = document.createElement("p");
-      detail.className =
-        "mt-2 break-words text-[11px] font-medium leading-4 text-[var(--faint)]";
-      detail.textContent = detailParts.join(" · ");
-      row.append(detail);
+      statuses.forEach((statusText, statusIndex) => {
+        const statusAccent = absenceItemAccent(
+          {
+            ...item,
+            status: statusText,
+          },
+          index + statusIndex,
+        );
+        const badge = document.createElement("span");
+        badge.className =
+          "inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold leading-none";
+        badge.style.color = statusAccent;
+        badge.style.borderColor = rgba(statusAccent, 0.32);
+        badge.style.backgroundColor = rgba(statusAccent, 0.11);
+        badge.textContent = statusText;
+        statusWrap.append(badge);
+      });
+
+      row.append(statusWrap);
     }
 
     list.append(row);
