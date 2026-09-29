@@ -172,6 +172,41 @@ function normalizeExternalHandoffUrl(url, eportalOrigin) {
   return target;
 }
 
+function getRequestContentType(request) {
+  const headers = request.headers();
+  return String(headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+}
+
+function transferableHandoffFromRequest(request, handoffUrl) {
+  const method = request.method().toUpperCase();
+
+  if (method === "GET") {
+    return {
+      type: "get",
+      url: handoffUrl.toString(),
+    };
+  }
+
+  if (method !== "POST") return null;
+
+  const contentType = getRequestContentType(request);
+  if (contentType !== "application/x-www-form-urlencoded") {
+    const error = new Error(
+      `ePortal generated an external POST handoff using unsupported content type ${contentType || "unknown"}.`,
+    );
+    error.code = "EPORTAL_HANDOFF_POST_UNSUPPORTED";
+    throw error;
+  }
+
+  const params = new URLSearchParams(request.postData() || "");
+
+  return {
+    type: "post",
+    url: handoffUrl.toString(),
+    fields: [...params.entries()],
+  };
+}
+
 async function profileExists() {
   try {
     const stat = await fs.stat(EPORTAL_PROFILE_DIR);
@@ -470,10 +505,28 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
           if (!handoffUrl) return;
 
+          const preserveMethod =
+            response.status() === 307 || response.status() === 308;
+
+          let result;
+          if (preserveMethod) {
+            result = transferableHandoffFromRequest(
+              response.request(),
+              handoffUrl,
+            );
+          } else {
+            result = {
+              type: "get",
+              url: handoffUrl.toString(),
+            };
+          }
+
+          if (!result) return;
+
           console.log(
-            `[handoff] captured external redirect for ${module.id}: ${handoffUrl.hostname}${handoffUrl.pathname}`,
+            `[handoff] captured external redirect for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
           );
-          finish(resolveHandoff, handoffUrl.toString());
+          finish(resolveHandoff, result);
         } catch {
           // Ignore malformed Location values.
         }
@@ -578,24 +631,32 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
           return;
         }
 
-        // The external SSO URL is bearer material. Capture it only in memory,
-        // abort the server-side navigation before the target system consumes it,
-        // and never log the URL itself.
+        // The external SSO material is bearer-equivalent. Capture it only in
+        // memory, abort the server-side navigation before the target consumes it,
+        // and never log the URL query or POST body.
         await route.abort("aborted");
 
-        if (request.method() !== "GET") {
+        let result;
+        try {
+          result = transferableHandoffFromRequest(request, handoffUrl);
+        } catch (error) {
+          finish(rejectHandoff, error);
+          return;
+        }
+
+        if (!result) {
           const error = new Error(
-            "ePortal generated an external SSO POST handoff, which cannot be transferred with an HTTP redirect.",
+            `ePortal generated an unsupported external ${request.method()} handoff.`,
           );
-          error.code = "EPORTAL_HANDOFF_POST_REQUIRED";
+          error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
           finish(rejectHandoff, error);
           return;
         }
 
         console.log(
-          `[handoff] captured external navigation for ${module.id}: ${handoffUrl.hostname}${handoffUrl.pathname}`,
+          `[handoff] captured external navigation for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
         );
-        finish(resolveHandoff, handoffUrl.toString());
+        finish(resolveHandoff, result);
       });
 
       console.log(`[handoff] triggering module ${module.id}`);
