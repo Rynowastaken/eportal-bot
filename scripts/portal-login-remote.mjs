@@ -154,7 +154,7 @@ try {
     console.log(`[+] Open: ${dashboardUrl}${launchPath}`);
   } else {
     console.log(`[+] Open your Dashboard at: ${launchPath}`);
-    console.log(`[+] One-time access token: ${token}`);
+    console.log(`[+] Temporary access token: ${token}`);
   }
   console.log("");
   console.log(
