@@ -483,15 +483,30 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       await context.route("**/*", async (route) => {
         const request = route.request();
 
-        if (!request.isNavigationRequest()) {
-          await route.continue();
-          return;
-        }
-
         let target;
         try {
           target = new URL(request.url());
         } catch {
+          await route.continue();
+          return;
+        }
+
+        if (!request.isNavigationRequest()) {
+          if (
+            target.protocol === "https:" &&
+            target.origin !== eportalOrigin
+          ) {
+            const label =
+              `${request.method()} ${request.resourceType()} ${target.hostname}${target.pathname}`;
+
+            if (!observed.responses.has(`external ${label}`)) {
+              observed.responses.add(`external ${label}`);
+              console.log(
+                `[handoff] external subrequest for ${module.id}: ${label}`,
+              );
+            }
+          }
+
           await route.continue();
           return;
         }
