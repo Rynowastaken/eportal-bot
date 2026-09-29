@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const required = [
@@ -54,6 +55,39 @@ console.log(
   `  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "10 (default)"}`,
 );
 console.log("  client convenience detection: userscript bridge");
+
+if (!errors.length) {
+  let browser;
+
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      timeout: 15_000,
+    });
+    console.log("  playwright chromium: launch ok");
+  } catch (error) {
+    const message = error?.message || String(error);
+    const missingLibrary = message.match(
+      /error while loading shared libraries:\s*([^:]+):/i,
+    )?.[1];
+
+    if (missingLibrary) {
+      errors.push(
+        `Playwright Chromium is missing Linux library ${missingLibrary}. Run: npm run install-browser`,
+      );
+    } else if (/executable doesn't exist|browserType\.launch/i.test(message)) {
+      errors.push(
+        "Playwright Chromium could not launch. Run: npm run install-browser",
+      );
+    } else {
+      errors.push(
+        `Playwright Chromium launch failed: ${message.split("\n")[0]}`,
+      );
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
 
 for (const error of errors) console.error(`  error: ${error}`);
 
