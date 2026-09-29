@@ -1,5 +1,6 @@
 export const EPORTAL_ORIGIN = "https://eportal.nutc.edu.tw";
 export const EPORTAL_HOME = `${EPORTAL_ORIGIN}/`;
+export const EPORTAL_LOGIN = `${EPORTAL_ORIGIN}/login.php`;
 export const EPORTAL_DASHBOARD = `${EPORTAL_ORIGIN}/nutc_dashboard/`;
 
 export const MODULES = Object.freeze([
