@@ -178,7 +178,6 @@ button {
 }
 
 .header-action svg,
-.info-icon svg,
 .module-icon svg {
   width: 20px;
   height: 20px;
@@ -407,51 +406,6 @@ button {
   font-size: 1rem;
 }
 
-.info-grid {
-  display: grid;
-  gap: 0.8rem;
-  margin-top: 0.3rem;
-}
-
-.info-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
-  padding: 1rem;
-  border-radius: 15px;
-}
-
-.info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 39px;
-  height: 39px;
-  flex: 0 0 39px;
-  color: var(--primary);
-  background: var(--pink-soft);
-  border: 1px solid var(--pink-ring);
-  border-radius: 11px;
-}
-
-.info-icon.gold {
-  color: var(--accent);
-  background: rgba(232, 184, 109, 0.1);
-  border-color: rgba(232, 184, 109, 0.32);
-}
-
-.info-card strong {
-  display: block;
-  font-size: 0.9rem;
-}
-
-.info-card p {
-  margin: 0.3rem 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.55;
-}
-
 footer {
   display: flex;
   justify-content: space-between;
@@ -530,9 +484,6 @@ footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .info-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (min-width: 980px) {
