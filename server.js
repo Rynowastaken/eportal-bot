@@ -390,7 +390,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        if (error?.code === "EPORTAL_HANDOFF_UNAVAILABLE") {
+        if (
+          error?.code === "EPORTAL_HANDOFF_UNAVAILABLE" ||
+          error?.code === "EPORTAL_HANDOFF_SESSION_BOUND"
+        ) {
           sendError(res, 502, error.message, error.code);
           return;
         }
