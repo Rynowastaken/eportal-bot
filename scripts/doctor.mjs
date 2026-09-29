@@ -19,6 +19,8 @@ const required = [
   "public/server-login.html",
   "public/server-login.js",
   "public/app.js",
+  "public/launch.html",
+  "public/launch.js",
   "public/theme.js",
   "public/motion.js",
   "public/tailwind-config.js",
