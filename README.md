@@ -203,12 +203,11 @@ Server
   .eportal-profile/
     ↓
   Playwright persistent Chromium
-    ↓ headless
-  ePortal
-    ↓ official SSO
-  AIS
-    ↓
-  scheduled/background data fetch
+    ├─ headless keepalive / background work
+    ├─ SSO handoff generation
+    └─ native Login Bridge when reauthentication is required
+          ↓
+        ePortal
 
 Client browser
     ↓
@@ -241,6 +240,7 @@ Server 與 client session 完全分離。
 - `ASP.NET_SessionId`
 - `PUBLIC_APP_USER_SSO_TOKEN`
 - 手動匯出的 browser state
+- Login Bridge token
 
 檢查程式碼語法與必要檔案：
 
