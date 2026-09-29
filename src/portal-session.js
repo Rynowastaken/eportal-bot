@@ -500,6 +500,7 @@ async function discoverBareExternalGet(
           htmlSignals.metaRefresh,
           ...htmlSignals.scriptTargets,
         ].filter(Boolean);
+        let followedHtmlNavigation = false;
 
         for (const candidate of navigationTargets) {
           const classified = classifyTarget(candidate);
@@ -526,11 +527,12 @@ async function discoverBareExternalGet(
               `[handoff] following HTML navigation for ${module.id}: GET ${classified.url.hostname}${classified.url.pathname}`,
             );
             continueWith(classified.url, "GET", []);
+            followedHtmlNavigation = true;
             break;
           }
         }
 
-        if (referer === current.toString()) {
+        if (followedHtmlNavigation) {
           continue;
         }
 
