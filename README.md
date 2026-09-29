@@ -15,41 +15,36 @@ npx playwright install chromium
 npm run doctor
 ```
 
-## Remote login from mobile or desktop
+## Native server re-login from mobile or desktop
 
-Normal Dashboard operation stays fully headless. When ePortal requires an interactive
-re-login, install Xpra plus its HTML5 client on the server and run:
+Normal Dashboard operation stays fully headless. When the saved server ePortal session
+expires, open the Dashboard and press **登入 Server ePortal**.
+
+The Dashboard starts a short-lived headless Playwright login session using the same
+`.eportal-profile/`, then opens `/server-login/`. The browser page is a normal
+responsive HTML form: inputs, selects, checkboxes, buttons, messages, and small
+verification images are mirrored from the real ePortal login page.
+
+There is **no remote desktop or pixel stream**. Your phone or desktop renders native
+HTML controls, so mobile keyboards, password managers, accessibility, scrolling, and
+desktop layouts behave normally. Network traffic is limited to small JSON form-state
+updates plus any individual verification images that are actually needed.
+
+Form values are sent over the protected Dashboard connection only when you submit an
+action, filled into the real server-side Playwright page, and kept in memory only. The
+application does not intentionally log or persist passwords or MFA codes. The ePortal
+cookies remain exclusively inside `.eportal-profile/`.
+
+The bridge holds the persistent-profile lock for its lifetime, so keepalive jobs and SSO
+handoff generation cannot open a second Chromium against the same profile. The default
+bridge lifetime is 15 minutes and can be changed with:
 
 ```bash
-DASHBOARD_URL=https://your-dashboard.example.com npm run login:remote
+EPORTAL_LOGIN_BRIDGE_TTL_MINUTES=10 npm start
 ```
 
-The command starts a temporary Xpra seamless session bound only to
-`127.0.0.1:14500`, then launches the same Playwright Chromium profile used by the
-server. It prints a temporary URL under `/remote-login/`.
-
-The remote page is responsive: on phones it collapses the controls and dedicates most
-of the dynamic viewport to Chromium; on desktop it expands into a wide centered viewer.
-
-Remote Login is fixed to a **128 kbps bandwidth budget** for the lowest practical
-data usage. There is no quality/bandwidth selector to accidentally raise usage.
-Xpra's HTML5 client receives `bandwidth_limit=128000` automatically.
-
-Other useful settings:
-
-```bash
-EPORTAL_REMOTE_TTL_MINUTES=20 npm run login:remote
-EPORTAL_REMOTE_PORT=14501 EPORTAL_REMOTE_DISPLAY=:101 npm run login:remote
-```
-
-Audio, clipboard sync, file transfer, printing, webcam, notifications, bell forwarding,
-and mDNS are disabled for the temporary Xpra session. The Xpra listener is localhost
-only; the browser reaches it through the Dashboard's HTTP/WebSocket reverse proxy.
-
-The session closes when login succeeds, when the command is interrupted, or when its
-login timeout expires. Keep the Dashboard origin behind Cloudflare Access; the remote
-viewer can control the server-side Chromium session and should be treated as privileged
-access.
+If the login flow leaves NUTC HTTPS origins or uses a browser feature the bridge cannot
+represent, the bridge stops rather than proxying arbitrary external authenticated pages.
 
 ## First server login
 
@@ -174,13 +169,7 @@ npm run run
 
 這條路徑不依賴 client browser 或 Userscript，適合 cron / scheduler。未來的 timetable fetcher 可以直接使用 `src/portal-session.js` 的 `openAisWithServerSession()`，在同一個 authenticated Playwright context 裡抓 AIS endpoint。
 
-若 ePortal session 過期，headless 檢查會判定為 `needs-login`，重新執行：
-
-```bash
-npm run login
-```
-
-即可刷新 server profile。
+若 ePortal session 過期，headless 檢查會判定為 `needs-login`。一般情況直接在 Dashboard 點 **登入 Server ePortal**，透過 native HTML Login Bridge 刷新 server profile。`npm run login` 仍保留給有圖形桌面的本機維護情境。
 
 Cron 範例：
 
@@ -223,6 +212,16 @@ Client browser
   server generates fresh SSO handoff
     ↓
   target system establishes client session
+
+Server re-login
+    ↓
+  Dashboard /server-login/
+    ↓
+  native HTML controls / small JSON actions
+    ↓
+  headless Playwright real ePortal login page
+    ↓
+  refreshed .eportal-profile/
 ```
 
 Server 與 client session 完全分離。
