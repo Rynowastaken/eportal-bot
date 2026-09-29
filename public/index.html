@@ -103,12 +103,13 @@
 
           <button
             id="settingsButton"
-            class="grid h-[42px] w-[42px] place-items-center rounded-xl border border-white/[.12] bg-white/[.07] text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+            class="grid h-[42px] w-[42px] place-items-center rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] hover:brightness-[1.04] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
             type="button"
             aria-label="外觀設定"
+            title="外觀設定"
             aria-haspopup="dialog"
           >
-            <i data-lucide="settings-2" class="h-5 w-5"></i>
+            <i data-lucide="settings" class="h-5 w-5"></i>
           </button>
 
           <input
@@ -436,6 +437,6 @@
 
     <script src="/theme.js?v=3"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=32" type="module"></script>
+    <script src="/app.js?v=33" type="module"></script>
   </body>
 </html>
