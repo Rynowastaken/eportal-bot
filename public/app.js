@@ -1,4 +1,6 @@
+const motion = window.NutcMotion;
 const moduleGrid = document.querySelector("#moduleGrid");
+const portalBackdrop = document.querySelector("#portalBackdrop");
 const serverMenu = document.querySelector("#serverMenu");
 const serverStatusButton = document.querySelector("#serverStatusButton");
 const serverStatusIcon = document.querySelector("#serverStatusIcon");
@@ -36,6 +38,8 @@ const backgroundUploadApply = document.querySelector("#backgroundUploadApply");
 let modulesCache = [];
 let stagedThemeSettings = null;
 let pendingBackgroundFile = null;
+let lastStatusIconKind = "";
+let initialModulesAnimated = false;
 
 async function api(path) {
   const response = await fetch(path, {
@@ -72,7 +76,7 @@ function formatThemeFactor(value) {
     .replace(/\.?0+$/, "");
 }
 
-function renderThemePreview() {
+function renderThemePreview({ animate = false } = {}) {
   if (!stagedThemeSettings) return;
 
   const palette =
@@ -84,6 +88,16 @@ function renderThemePreview() {
     const swatch = document.createElement("span");
     swatch.style.backgroundColor = color;
     themePreview.append(swatch);
+  }
+
+  if (animate) {
+    void motion?.stagger?.(themePreview.children, {
+      step: 28,
+      duration: 220,
+      y: 0,
+      scale: 0.82,
+      maxDelay: 112,
+    });
   }
 
   themeColorfulness.value = stagedThemeSettings.colorfulness;
@@ -134,28 +148,51 @@ function renderThemeSchemes() {
     button.textContent = scheme.name;
     button.addEventListener("click", () => {
       stagedThemeSettings.colorScheme = scheme.id;
-      renderThemePreview();
+      renderThemePreview({ animate: true });
+      void motion?.emphasize?.(button, { duration: 190 });
     });
     themeSchemeOptions.append(button);
   }
 }
 
-function openThemeDialog() {
+async function openThemeDialog() {
   stagedThemeSettings = {
     ...window.NutcTheme.settings(),
   };
   renderThemeSchemes();
-  renderThemePreview();
+  renderThemePreview({ animate: true });
   renderIcons();
   setServerMenuOpen(false);
 
-  if (!themeDialog.open) {
-    themeDialog.showModal();
-  }
+  await motion?.openDialog?.(
+    themeDialog,
+    themeDialog.firstElementChild,
+    {
+      duration: 280,
+      y: 14,
+      scale: 0.97,
+    },
+  );
+
+  requestAnimationFrame(() => themeDialogClose.focus());
 }
 
-function closeThemeDialog() {
-  if (themeDialog.open) themeDialog.close();
+async function closeThemeDialog() {
+  if (!themeDialog.open) {
+    stagedThemeSettings = null;
+    return;
+  }
+
+  await motion?.closeDialog?.(
+    themeDialog,
+    themeDialog.firstElementChild,
+    {
+      duration: 180,
+      y: 10,
+      scale: 0.98,
+    },
+  );
+
   stagedThemeSettings = null;
 }
 
@@ -182,27 +219,43 @@ function setBackgroundUploadStatus(message = "", isError = false) {
   backgroundUploadStatus.classList.toggle("text-[var(--muted)]", !isError);
 }
 
-function openBackgroundUploadDialog() {
-  closeThemeDialog();
+async function openBackgroundUploadDialog() {
+  await closeThemeDialog();
   resetBackgroundUploadDialog();
+  renderIcons();
 
-  if (!backgroundUploadDialog.open) {
-    backgroundUploadDialog.showModal();
-    renderIcons();
-  }
+  await motion?.openDialog?.(
+    backgroundUploadDialog,
+    backgroundUploadDialog.firstElementChild,
+    {
+      duration: 220,
+      y: 10,
+      scale: 0.97,
+    },
+  );
 
   requestAnimationFrame(() => backgroundChooseFile.focus());
 }
 
-function closeBackgroundUploadDialog({ reopenSettings = false } = {}) {
+async function closeBackgroundUploadDialog({
+  reopenSettings = false,
+} = {}) {
   if (backgroundUploadDialog.open) {
-    backgroundUploadDialog.close();
+    await motion?.closeDialog?.(
+      backgroundUploadDialog,
+      backgroundUploadDialog.firstElementChild,
+      {
+        duration: 170,
+        y: 8,
+        scale: 0.985,
+      },
+    );
   }
 
   resetBackgroundUploadDialog();
 
   if (reopenSettings) {
-    requestAnimationFrame(() => openThemeDialog());
+    await openThemeDialog();
   } else {
     settingsButton.focus();
   }
@@ -230,6 +283,11 @@ function readBackgroundImageFile(file, sourceLabel = "Selected from files") {
       file.name || "Pasted image";
     backgroundUploadPreviewSource.textContent = sourceLabel;
     backgroundUploadPreview.classList.remove("hidden");
+    void motion?.enter?.(backgroundUploadPreview, {
+      duration: 260,
+      y: 8,
+      scale: 0.985,
+    });
     backgroundUploadApply.disabled = false;
     setBackgroundUploadStatus("圖片已準備好，確認預覽後即可套用。");
     renderIcons();
@@ -255,6 +313,11 @@ function setStatusIcon(kind) {
   };
 
   serverStatusIcon.innerHTML = icons[kind] || icons.login;
+
+  if (kind !== lastStatusIconKind) {
+    lastStatusIconKind = kind;
+    void motion?.pop?.(serverStatusIcon, { duration: 220 });
+  }
 }
 
 function setServerStatus(status) {
@@ -306,7 +369,7 @@ function moduleAccent(index) {
   return palette[index % Math.max(1, Math.min(3, palette.length))] || "#f0a8c8";
 }
 
-function renderModules(modules) {
+function renderModules(modules, { animate = false } = {}) {
   modulesCache = modules;
   moduleGrid.replaceChildren();
 
@@ -359,6 +422,16 @@ function renderModules(modules) {
   });
 
   renderIcons();
+
+  if (animate) {
+    void motion?.stagger?.(moduleGrid.children, {
+      step: 48,
+      duration: 340,
+      y: 10,
+      scale: 0.98,
+      maxDelay: 220,
+    });
+  }
 }
 
 function showLoadError(message) {
@@ -401,7 +474,8 @@ serverStatusButton.addEventListener("click", (event) => {
 });
 
 settingsButton.addEventListener("click", () => {
-  openThemeDialog();
+  void motion?.emphasize?.(settingsButton, { duration: 180 });
+  void openThemeDialog();
 });
 
 serverLoginAction.addEventListener("click", () => {
@@ -409,18 +483,18 @@ serverLoginAction.addEventListener("click", () => {
 });
 
 themeDialogClose.addEventListener("click", () => {
-  closeThemeDialog();
+  void closeThemeDialog();
 });
 
 themeDialog.addEventListener("click", (event) => {
   if (event.target === themeDialog) {
-    closeThemeDialog();
+    void closeThemeDialog();
   }
 });
 
 themeDialog.addEventListener("cancel", (event) => {
   event.preventDefault();
-  closeThemeDialog();
+  void closeThemeDialog();
 });
 
 themeColorfulness.addEventListener("input", () => {
@@ -439,20 +513,19 @@ themeReset.addEventListener("click", () => {
   stagedThemeSettings = {
     ...window.NutcTheme.defaultSettings(),
   };
-  renderThemePreview();
+  renderThemePreview({ animate: true });
 });
 
-themeApply.addEventListener("click", () => {
+themeApply.addEventListener("click", async () => {
   if (!stagedThemeSettings) return;
 
   window.NutcTheme.applySettings(stagedThemeSettings);
-  renderModules(modulesCache);
   syncThemeMenu();
-  closeThemeDialog();
+  await closeThemeDialog();
 });
 
 backgroundAction.addEventListener("click", () => {
-  openBackgroundUploadDialog();
+  void openBackgroundUploadDialog();
 });
 
 backgroundChooseFile.addEventListener("click", () => {
@@ -527,8 +600,12 @@ backgroundUploadApply.addEventListener("click", async () => {
   try {
     await window.NutcTheme.setBackgroundFile(pendingBackgroundFile);
     syncThemeMenu();
-    renderModules(modulesCache);
-    closeBackgroundUploadDialog({ reopenSettings: true });
+    void motion?.fade?.(portalBackdrop, {
+      duration: 320,
+      from: 0.55,
+      to: 1,
+    });
+    await closeBackgroundUploadDialog({ reopenSettings: true });
   } catch (error) {
     backgroundUploadApply.disabled = false;
     setBackgroundUploadStatus(
@@ -541,16 +618,16 @@ backgroundUploadApply.addEventListener("click", async () => {
 });
 
 backgroundUploadClose.addEventListener("click", () => {
-  closeBackgroundUploadDialog({ reopenSettings: true });
+  void closeBackgroundUploadDialog({ reopenSettings: true });
 });
 
 backgroundUploadCancel.addEventListener("click", () => {
-  closeBackgroundUploadDialog({ reopenSettings: true });
+  void closeBackgroundUploadDialog({ reopenSettings: true });
 });
 
 backgroundUploadDialog.addEventListener("cancel", (event) => {
   event.preventDefault();
-  closeBackgroundUploadDialog({ reopenSettings: true });
+  void closeBackgroundUploadDialog({ reopenSettings: true });
 });
 
 backgroundUploadDialog.addEventListener("click", (event) => {
@@ -561,7 +638,11 @@ backgroundUploadDialog.addEventListener("click", (event) => {
 clearBackgroundAction.addEventListener("click", () => {
   window.NutcTheme.clearBackground();
   syncThemeMenu();
-  renderModules(modulesCache);
+  void motion?.fade?.(portalBackdrop, {
+    duration: 280,
+    from: 0.55,
+    to: 1,
+  });
 });
 
 serverLogoutAction.addEventListener("click", async () => {
@@ -617,7 +698,7 @@ document.addEventListener("keydown", (event) => {
 
 window.addEventListener("nutc-theme-change", () => {
   syncThemeMenu();
-  if (modulesCache.length) renderModules(modulesCache);
+  if (modulesCache.length) renderModules(modulesCache, { animate: false });
 });
 
 (async () => {
@@ -633,7 +714,10 @@ window.addEventListener("nutc-theme-change", () => {
   const [modulesResult, statusResult] = results;
 
   if (modulesResult.status === "fulfilled") {
-    renderModules(modulesResult.value.modules || []);
+    renderModules(modulesResult.value.modules || [], {
+      animate: !initialModulesAnimated,
+    });
+    initialModulesAnimated = true;
   } else {
     showLoadError(modulesResult.reason?.message);
   }
