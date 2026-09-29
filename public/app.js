@@ -8,6 +8,9 @@ const classScheduleCard = document.querySelector("#classScheduleCard");
 const scheduleGrid = document.querySelector("#scheduleGrid");
 const scheduleMeta = document.querySelector("#scheduleMeta");
 const scheduleRefreshButton = document.querySelector("#scheduleRefreshButton");
+const absenceListContent = document.querySelector("#absenceListContent");
+const absenceMeta = document.querySelector("#absenceMeta");
+const absenceRefreshButton = document.querySelector("#absenceRefreshButton");
 const portalBackdrop = document.querySelector("#portalBackdrop");
 const portalHeader = document.querySelector("#portalHeader");
 const portalIdentity = document.querySelector("#portalIdentity");
@@ -73,6 +76,7 @@ let initialModulesAnimated = false;
 let statusPointerInside = false;
 let statusFocusInside = false;
 let classScheduleData = null;
+let absenceListData = null;
 
 const accountNameKey = "nutc-portal-account-name-v1";
 const accountAvatarKey = "nutc-portal-account-avatar-v1";
@@ -1174,6 +1178,235 @@ scheduleRefreshButton?.addEventListener("click", () => {
   void loadClassSchedule({ force: true });
 });
 
+function absenceItemAccent(item, index) {
+  const palette = window.NutcTheme?.palette?.() || [
+    "#f0a8c8",
+    "#e8b86d",
+    "#51314a",
+    "#f07178",
+  ];
+  const usable = palette.slice(0, 4).filter(Boolean);
+  const source = [
+    item?.type,
+    item?.course,
+    item?.date,
+    item?.period,
+    index,
+  ]
+    .filter((value) => value !== undefined && value !== null)
+    .join("|");
+
+  let hash = 0;
+  for (const char of source) {
+    hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  }
+
+  return usable[Math.abs(hash) % Math.max(1, usable.length)] || "#f0a8c8";
+}
+
+function setAbsenceMessage(message, { kind = "info" } = {}) {
+  if (!absenceListContent) return;
+
+  absenceListContent.setAttribute("aria-busy", String(kind === "loading"));
+  absenceListContent.replaceChildren();
+
+  const card = document.createElement("div");
+  card.className =
+    "flex min-h-[150px] items-center justify-center gap-3 px-3 text-center text-sm font-medium text-[var(--muted)]";
+
+  const icon = document.createElement("i");
+  icon.dataset.lucide =
+    kind === "loading"
+      ? "loader-circle"
+      : kind === "error"
+        ? "circle-alert"
+        : kind === "login"
+          ? "log-in"
+          : "clipboard-list";
+  icon.className =
+    "h-4 w-4 shrink-0 " + (kind === "loading" ? "animate-spin" : "");
+
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  card.append(icon, text);
+  absenceListContent.append(card);
+  renderIcons();
+}
+
+function renderAbsenceList() {
+  if (!absenceListContent || !absenceListData) return;
+
+  const items = Array.isArray(absenceListData.items)
+    ? absenceListData.items
+    : [];
+
+  if (!items.length) {
+    setAbsenceMessage(
+      absenceListData.emptyMessage || "目前沒有缺曠紀錄。",
+    );
+    return;
+  }
+
+  const rgba = window.NutcTheme?.rgba || ((color) => color);
+  absenceListContent.setAttribute("aria-busy", "false");
+  absenceListContent.replaceChildren();
+
+  const list = document.createElement("div");
+  list.className = "grid gap-2.5";
+
+  items.forEach((item, index) => {
+    const accent = absenceItemAccent(item, index);
+    const row = document.createElement("article");
+    row.className =
+      "rounded-[16px] border p-3 shadow-sm backdrop-blur-[12px]";
+    row.style.borderColor = rgba(accent, 0.18);
+    row.style.background =
+      `linear-gradient(115deg, ${rgba(accent, 0.07)} 0%, rgba(255,255,255,.025) 78%)`;
+
+    const top = document.createElement("div");
+    top.className = "flex min-w-0 items-start justify-between gap-2";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "min-w-0 flex-1";
+
+    const course = document.createElement("strong");
+    course.className =
+      "block break-words text-sm font-semibold leading-5 text-[var(--foreground)]";
+    course.textContent =
+      item.course ||
+      item.note ||
+      item.cells?.filter(Boolean).slice(0, 2).join(" · ") ||
+      "缺曠紀錄";
+
+    const date = document.createElement("p");
+    date.className =
+      "mt-1 text-[11px] font-medium leading-4 text-[var(--muted)]";
+    date.textContent = [item.date, item.weekday, item.period]
+      .filter(Boolean)
+      .join(" · ");
+
+    titleWrap.append(course);
+    if (date.textContent) titleWrap.append(date);
+
+    const type = document.createElement("span");
+    type.className =
+      "shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold";
+    type.style.color = accent;
+    type.style.borderColor = rgba(accent, 0.28);
+    type.style.backgroundColor = rgba(accent, 0.11);
+    type.textContent = item.type || "紀錄";
+
+    top.append(titleWrap, type);
+    row.append(top);
+
+    const detailParts = [item.teacher, item.note].filter(Boolean);
+    if (detailParts.length) {
+      const detail = document.createElement("p");
+      detail.className =
+        "mt-2 break-words text-[11px] font-medium leading-4 text-[var(--faint)]";
+      detail.textContent = detailParts.join(" · ");
+      row.append(detail);
+    }
+
+    list.append(row);
+  });
+
+  absenceListContent.append(list);
+}
+
+function updateAbsenceMeta(data) {
+  if (!absenceMeta) return;
+
+  const fetched = data?.fetchedAt
+    ? new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(data.fetchedAt))
+    : "";
+
+  const parts = [];
+  if (data?.termLabel) parts.push(data.termLabel);
+  parts.push(`${Number(data?.total || 0)} 筆`);
+  if (data?.stale) parts.push("顯示快取");
+  if (fetched) parts.push(`更新 ${fetched}`);
+
+  absenceMeta.textContent = parts.join(" · ");
+  absenceMeta.title = data?.refreshError || "";
+}
+
+async function loadAbsenceList({ force = false } = {}) {
+  if (!absenceRefreshButton) return;
+
+  const refreshIcon = absenceRefreshButton.querySelector("svg");
+  absenceRefreshButton.disabled = true;
+  refreshIcon?.classList.add("animate-spin");
+
+  if (!absenceListData) {
+    setAbsenceMessage("正在從 AIS 載入缺曠紀錄…", { kind: "loading" });
+    absenceMeta.textContent = "正在連線 NUTC AIS";
+  } else {
+    absenceMeta.textContent = "正在更新缺曠紀錄…";
+  }
+
+  try {
+    const data = await api(
+      force ? "/api/absence-list?refresh=1" : "/api/absence-list",
+    );
+
+    if (!Array.isArray(data?.items)) {
+      throw new Error("AIS 缺曠資料格式不正確。");
+    }
+
+    absenceListData = data;
+    renderAbsenceList();
+    updateAbsenceMeta(data);
+  } catch (error) {
+    if (absenceListData) {
+      absenceMeta.textContent = "更新失敗，保留目前紀錄";
+      absenceMeta.title = error?.message || "";
+      renderAbsenceList();
+      return;
+    }
+
+    if (error?.status === 401 || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+      absenceMeta.textContent = "需要 Server ePortal 登入";
+      setAbsenceMessage("請先登入 Server ePortal，再載入缺曠紀錄。", {
+        kind: "login",
+      });
+    } else if (error?.status === 409) {
+      absenceMeta.textContent = "Server ePortal 使用中";
+      setAbsenceMessage("Server ePortal 正在執行其他操作，稍後按更新重試。");
+    } else {
+      absenceMeta.textContent = "缺曠紀錄載入失敗";
+      absenceMeta.title = error?.message || "";
+      setAbsenceMessage(error?.message || "無法載入 AIS 缺曠紀錄。", {
+        kind: "error",
+      });
+    }
+  } finally {
+    absenceRefreshButton.disabled = false;
+    absenceRefreshButton.querySelector("svg")?.classList.remove("animate-spin");
+  }
+}
+
+function resetAbsenceListForLoggedOutState() {
+  absenceListData = null;
+  absenceMeta.textContent = "需要 Server ePortal 登入";
+  absenceMeta.title = "";
+  setAbsenceMessage("請先登入 Server ePortal，再載入缺曠紀錄。", {
+    kind: "login",
+  });
+}
+
+absenceRefreshButton?.addEventListener("click", () => {
+  void loadAbsenceList({ force: true });
+});
+
 function openModule(module) {
   window.location.assign(module.launchPath);
 }
@@ -1768,6 +2001,7 @@ serverLogoutAction.addEventListener("click", async () => {
       loginBridge: { active: false },
     });
     resetClassScheduleForLoggedOutState();
+    resetAbsenceListForLoggedOutState();
     setServerMenuOpen(false);
   } catch (error) {
     console.error("Server ePortal logout failed:", error);
@@ -1800,6 +2034,7 @@ window.addEventListener("nutc-theme-change", () => {
   syncThemeMenu();
   if (modulesCache.length) renderModules(modulesCache, { animate: false });
   if (classScheduleData) renderScheduleGrid();
+  if (absenceListData) renderAbsenceList();
 });
 
 if (typeof ResizeObserver !== "undefined") {
@@ -1904,12 +2139,18 @@ if (typeof ResizeObserver !== "undefined") {
     setServerStatus(statusResult.value);
 
     if (statusResult.value.status === "valid") {
-      void loadClassSchedule();
+      void (async () => {
+        await loadClassSchedule();
+        await loadAbsenceList();
+      })();
     } else if (statusResult.value.status === "busy") {
       scheduleMeta.textContent = "Server ePortal 使用中";
       setScheduleMessage("Server ePortal 正在執行其他操作，稍後按更新載入課表。");
+      absenceMeta.textContent = "Server ePortal 使用中";
+      setAbsenceMessage("Server ePortal 正在執行其他操作，稍後按更新載入缺曠紀錄。");
     } else {
       resetClassScheduleForLoggedOutState();
+      resetAbsenceListForLoggedOutState();
     }
   } else {
     setServerStatus({
@@ -1918,6 +2159,10 @@ if (typeof ResizeObserver !== "undefined") {
     });
     scheduleMeta.textContent = "無法確認 Server ePortal 狀態";
     setScheduleMessage("目前無法確認登入狀態，稍後按更新重試。", {
+      kind: "error",
+    });
+    absenceMeta.textContent = "無法確認 Server ePortal 狀態";
+    setAbsenceMessage("目前無法確認登入狀態，稍後按更新重試。", {
       kind: "error",
     });
   }
