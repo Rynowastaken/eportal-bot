@@ -10,6 +10,22 @@ const serverStatusMenu = document.querySelector("#serverStatusMenu");
 const serverLoginAction = document.querySelector("#serverLoginAction");
 const serverLogoutAction = document.querySelector("#serverLogoutAction");
 const settingsButton = document.querySelector("#settingsButton");
+const accountAvatarButton = document.querySelector("#accountAvatarButton");
+const accountAvatarImage = document.querySelector("#accountAvatarImage");
+const accountAvatarFallback = document.querySelector("#accountAvatarFallback");
+const welcomeUsername = document.querySelector("#welcomeUsername");
+const accountSettingsAction = document.querySelector("#accountSettingsAction");
+const accountDialog = document.querySelector("#accountDialog");
+const accountDialogClose = document.querySelector("#accountDialogClose");
+const accountAvatarInput = document.querySelector("#accountAvatarInput");
+const accountAvatarPreview = document.querySelector("#accountAvatarPreview");
+const accountAvatarPreviewFallback = document.querySelector("#accountAvatarPreviewFallback");
+const accountAvatarChoose = document.querySelector("#accountAvatarChoose");
+const accountAvatarRemove = document.querySelector("#accountAvatarRemove");
+const accountUsername = document.querySelector("#accountUsername");
+const accountSettingsStatus = document.querySelector("#accountSettingsStatus");
+const accountSettingsCancel = document.querySelector("#accountSettingsCancel");
+const accountSettingsSave = document.querySelector("#accountSettingsSave");
 const backgroundAction = document.querySelector("#backgroundAction");
 const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
 const backgroundInput = document.querySelector("#backgroundInput");
@@ -44,6 +60,11 @@ let pendingBackgroundFile = null;
 let lastStatusIconKind = "";
 let initialModulesAnimated = false;
 
+const accountNameKey = "nutc-portal-account-name-v1";
+const accountAvatarKey = "nutc-portal-account-avatar-v1";
+let stagedAccountAvatar = "";
+let stagedAccountAvatarChanged = false;
+
 async function api(path) {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -63,6 +84,176 @@ function renderIcons() {
   if (window.lucide) {
     window.lucide.createIcons();
   }
+}
+
+function readLocal(key, fallback = "") {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocal(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // Browser storage is best effort.
+  }
+}
+
+function applyAccountProfile() {
+  const username = readLocal(accountNameKey, "User").trim() || "User";
+  const avatar = readLocal(accountAvatarKey, "");
+
+  welcomeUsername.textContent = username;
+
+  if (avatar) {
+    accountAvatarImage.src = avatar;
+    accountAvatarImage.classList.remove("hidden");
+    accountAvatarFallback.classList.add("hidden");
+  } else {
+    accountAvatarImage.removeAttribute("src");
+    accountAvatarImage.classList.add("hidden");
+    accountAvatarFallback.classList.remove("hidden");
+  }
+}
+
+function setAccountPreview(avatar) {
+  if (avatar) {
+    accountAvatarPreview.src = avatar;
+    accountAvatarPreview.classList.remove("hidden");
+    accountAvatarPreviewFallback.classList.add("hidden");
+    accountAvatarRemove.disabled = false;
+    accountAvatarRemove.classList.remove("opacity-45", "cursor-not-allowed");
+  } else {
+    accountAvatarPreview.removeAttribute("src");
+    accountAvatarPreview.classList.add("hidden");
+    accountAvatarPreviewFallback.classList.remove("hidden");
+    accountAvatarRemove.disabled = true;
+    accountAvatarRemove.classList.add("opacity-45", "cursor-not-allowed");
+  }
+}
+
+function setAccountSettingsStatus(message = "", isError = false) {
+  accountSettingsStatus.textContent = message;
+  accountSettingsStatus.classList.toggle("text-[#f4a0a5]", isError);
+  accountSettingsStatus.classList.toggle("text-[var(--muted)]", !isError);
+}
+
+function prepareAccountAvatar(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => {
+      const size = 320;
+      const sourceSize = Math.min(image.width, image.height);
+      const sx = Math.max(0, (image.width - sourceSize) / 2);
+      const sy = Math.max(0, (image.height - sourceSize) / 2);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+
+      ctx.drawImage(
+        image,
+        sx,
+        sy,
+        sourceSize,
+        sourceSize,
+        0,
+        0,
+        size,
+        size,
+      );
+
+      resolve(canvas.toDataURL("image/jpeg", 0.86));
+    };
+
+    image.onerror = () => reject(new Error("無法讀取這張圖片。"));
+    image.src = dataUrl;
+  });
+}
+
+async function readAccountAvatarFile(file) {
+  if (!file) return;
+
+  if (!String(file.type || "").startsWith("image/")) {
+    setAccountSettingsStatus("請選擇圖片檔案。", true);
+    return;
+  }
+
+  if (file.size > 12 * 1024 * 1024) {
+    setAccountSettingsStatus("圖片太大，請選擇 12 MB 以下的圖片。", true);
+    return;
+  }
+
+  accountAvatarChoose.disabled = true;
+  setAccountSettingsStatus("正在處理圖片…");
+
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("無法讀取這張圖片。"));
+      reader.readAsDataURL(file);
+    });
+
+    stagedAccountAvatar = await prepareAccountAvatar(dataUrl);
+    stagedAccountAvatarChanged = true;
+    setAccountPreview(stagedAccountAvatar);
+    setAccountSettingsStatus("圖片已準備好，按 Save 套用。");
+  } catch (error) {
+    setAccountSettingsStatus(
+      error?.message || "無法處理這張圖片。",
+      true,
+    );
+  } finally {
+    accountAvatarChoose.disabled = false;
+  }
+}
+
+async function openAccountDialog() {
+  setServerMenuOpen(false);
+
+  accountUsername.value =
+    readLocal(accountNameKey, "User").trim() || "User";
+  stagedAccountAvatar = readLocal(accountAvatarKey, "");
+  stagedAccountAvatarChanged = false;
+  setAccountPreview(stagedAccountAvatar);
+  setAccountSettingsStatus("");
+  renderIcons();
+
+  await motion?.openDialog?.(
+    accountDialog,
+    accountDialog.firstElementChild,
+    {
+      duration: 260,
+      y: 12,
+      scale: 0.97,
+    },
+  );
+
+  requestAnimationFrame(() => accountUsername.focus());
+}
+
+async function closeAccountDialog() {
+  if (!accountDialog.open) return;
+
+  await motion?.closeDialog?.(
+    accountDialog,
+    accountDialog.firstElementChild,
+    {
+      duration: 170,
+      y: 8,
+      scale: 0.985,
+    },
+  );
+
+  stagedAccountAvatar = "";
+  stagedAccountAvatarChanged = false;
+  accountAvatarInput.value = "";
 }
 
 function syncThemeMenu() {
@@ -518,6 +709,73 @@ settingsButton.addEventListener("click", () => {
   void openThemeDialog();
 });
 
+accountAvatarButton.addEventListener("click", () => {
+  void motion?.emphasize?.(accountAvatarButton, { duration: 180 });
+  void openAccountDialog();
+});
+
+accountSettingsAction.addEventListener("click", () => {
+  void openAccountDialog();
+});
+
+accountDialogClose.addEventListener("click", () => {
+  void closeAccountDialog();
+});
+
+accountSettingsCancel.addEventListener("click", () => {
+  void closeAccountDialog();
+});
+
+accountDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  void closeAccountDialog();
+});
+
+accountDialog.addEventListener("click", (event) => {
+  if (event.target === accountDialog) {
+    void closeAccountDialog();
+  }
+});
+
+accountAvatarChoose.addEventListener("click", () => {
+  accountAvatarInput.value = "";
+  accountAvatarInput.click();
+});
+
+accountAvatarInput.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  void readAccountAvatarFile(file);
+});
+
+accountAvatarRemove.addEventListener("click", () => {
+  stagedAccountAvatar = "";
+  stagedAccountAvatarChanged = true;
+  setAccountPreview("");
+  setAccountSettingsStatus("帳號圖片會在儲存後移除。");
+});
+
+accountSettingsSave.addEventListener("click", async () => {
+  const username = accountUsername.value.trim();
+
+  if (!username) {
+    setAccountSettingsStatus("請輸入 Username。", true);
+    accountUsername.focus();
+    return;
+  }
+
+  writeLocal(accountNameKey, username);
+
+  if (stagedAccountAvatarChanged) {
+    writeLocal(accountAvatarKey, stagedAccountAvatar);
+  }
+
+  applyAccountProfile();
+  setAccountSettingsStatus("已儲存。");
+  await motion?.emphasize?.(accountSettingsSave, { duration: 180 });
+  await closeAccountDialog();
+});
+
 serverLoginAction.addEventListener("click", () => {
   window.location.assign("/server-login/");
 });
@@ -813,7 +1071,8 @@ document.addEventListener("keydown", (event) => {
   if (
     event.key === "Escape" &&
     !themeDialog.open &&
-    !backgroundUploadDialog.open
+    !backgroundUploadDialog.open &&
+    !accountDialog.open
   ) {
     setServerMenuOpen(false);
     serverStatusButton.focus();
@@ -827,6 +1086,7 @@ window.addEventListener("nutc-theme-change", () => {
 
 (async () => {
   await window.NutcTheme.init();
+  applyAccountProfile();
   syncThemeMenu();
   renderIcons();
 
