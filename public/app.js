@@ -73,6 +73,11 @@ const accountNameKey = "nutc-portal-account-name-v1";
 const accountAvatarKey = "nutc-portal-account-avatar-v1";
 let stagedAccountAvatar = "";
 let stagedAccountAvatarChanged = false;
+let currentAccountProfile = {
+  initialized: false,
+  username: "User",
+  avatarUrl: "",
+};
 
 async function api(path) {
   const response = await fetch(path, {
@@ -112,9 +117,90 @@ function writeLocal(key, value) {
   }
 }
 
-function applyAccountProfile() {
-  const username = readLocal(accountNameKey, "User").trim() || "User";
-  const avatar = readLocal(accountAvatarKey, "");
+async function saveServerAccountProfile({
+  username,
+  avatarDataUrl,
+  includeAvatar = false,
+}) {
+  const body = { username };
+
+  if (includeAvatar) {
+    body.avatarDataUrl = avatarDataUrl;
+  }
+
+  const response = await fetch("/api/preferences/account", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(
+      data.error || `Unable to save account settings (${response.status}).`,
+    );
+    error.code = data.code || "";
+    throw error;
+  }
+
+  return data.account;
+}
+
+async function loadServerAccountProfile() {
+  try {
+    const preferences = await api("/api/preferences");
+    let account = preferences.account || {
+      initialized: false,
+      username: "User",
+      avatarUrl: "",
+    };
+
+    if (!account.initialized) {
+      const legacyUsername = readLocal(accountNameKey, "").trim();
+      const legacyAvatar = readLocal(accountAvatarKey, "");
+
+      if (legacyUsername || legacyAvatar) {
+        account = await saveServerAccountProfile({
+          username: legacyUsername || "User",
+          avatarDataUrl: legacyAvatar,
+          includeAvatar: Boolean(legacyAvatar),
+        });
+      }
+    }
+
+    writeLocal(accountNameKey, "");
+    writeLocal(accountAvatarKey, "");
+
+    currentAccountProfile = {
+      initialized: Boolean(account.initialized),
+      username: account.username?.trim() || "User",
+      avatarUrl: account.avatarUrl || "",
+    };
+  } catch (error) {
+    console.warn(
+      "Server account preferences unavailable; using local fallback:",
+      error?.message || error,
+    );
+
+    currentAccountProfile = {
+      initialized: false,
+      username: readLocal(accountNameKey, "User").trim() || "User",
+      avatarUrl: readLocal(accountAvatarKey, ""),
+    };
+  }
+
+  return currentAccountProfile;
+}
+
+function applyAccountProfile(profile = currentAccountProfile) {
+  const username = profile?.username?.trim() || "User";
+  const avatar = profile?.avatarUrl || "";
 
   welcomeUsername.textContent = username;
 
@@ -227,8 +313,8 @@ async function openAccountDialog() {
   setServerMenuOpen(false);
 
   accountUsername.value =
-    readLocal(accountNameKey, "User").trim() || "User";
-  stagedAccountAvatar = readLocal(accountAvatarKey, "");
+    currentAccountProfile.username?.trim() || "User";
+  stagedAccountAvatar = currentAccountProfile.avatarUrl || "";
   stagedAccountAvatarChanged = false;
   setAccountPreview(stagedAccountAvatar);
   setAccountSettingsStatus("");
@@ -861,16 +947,38 @@ accountSettingsSave.addEventListener("click", async () => {
     return;
   }
 
-  writeLocal(accountNameKey, username);
+  accountSettingsSave.disabled = true;
+  accountAvatarChoose.disabled = true;
+  setAccountSettingsStatus("正在儲存到 Server…");
 
-  if (stagedAccountAvatarChanged) {
-    writeLocal(accountAvatarKey, stagedAccountAvatar);
+  try {
+    const account = await saveServerAccountProfile({
+      username,
+      avatarDataUrl: stagedAccountAvatar,
+      includeAvatar: stagedAccountAvatarChanged,
+    });
+
+    currentAccountProfile = {
+      initialized: true,
+      username: account.username?.trim() || "User",
+      avatarUrl: account.avatarUrl || "",
+    };
+
+    writeLocal(accountNameKey, "");
+    writeLocal(accountAvatarKey, "");
+    applyAccountProfile();
+    setAccountSettingsStatus("已儲存到 Server。");
+    await motion?.emphasize?.(accountSettingsSave, { duration: 180 });
+    await closeAccountDialog();
+  } catch (error) {
+    setAccountSettingsStatus(
+      "儲存失敗：" + (error?.message || String(error)),
+      true,
+    );
+  } finally {
+    accountSettingsSave.disabled = false;
+    accountAvatarChoose.disabled = false;
   }
-
-  applyAccountProfile();
-  setAccountSettingsStatus("已儲存。");
-  await motion?.emphasize?.(accountSettingsSave, { duration: 180 });
-  await closeAccountDialog();
 });
 
 serverLoginAction.addEventListener("click", () => {
@@ -1030,14 +1138,22 @@ backgroundUploadDialog.addEventListener("click", (event) => {
   void closeBackgroundUploadDialog({ reopenSettings: true });
 });
 
-clearBackgroundAction.addEventListener("click", () => {
-  window.NutcTheme.clearBackground();
-  syncThemeMenu();
-  void motion?.fade?.(portalBackdrop, {
-    duration: 280,
-    from: 0.55,
-    to: 1,
-  });
+clearBackgroundAction.addEventListener("click", async () => {
+  clearBackgroundAction.disabled = true;
+
+  try {
+    await window.NutcTheme.clearBackground();
+    syncThemeMenu();
+    void motion?.fade?.(portalBackdrop, {
+      duration: 280,
+      from: 0.55,
+      to: 1,
+    });
+  } catch (error) {
+    console.error("Could not clear server background:", error);
+  } finally {
+    clearBackgroundAction.disabled = false;
+  }
 });
 
 function setDebugRestartStatus(message, isError = false) {
@@ -1192,7 +1308,10 @@ if (typeof ResizeObserver !== "undefined") {
 }
 
 (async () => {
-  await window.NutcTheme.init();
+  await Promise.all([
+    window.NutcTheme.init(),
+    loadServerAccountProfile(),
+  ]);
   applyAccountProfile();
   syncThemeMenu();
   renderIcons();
