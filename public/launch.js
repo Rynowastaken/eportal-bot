@@ -176,52 +176,20 @@ function showError(message, code = "") {
   });
 }
 
-function submitHandoff(handoff) {
-  if (handoff.type === "get") {
-    location.replace(handoff.url);
-    return;
-  }
-
-  if (handoff.type !== "post") {
-    throw new Error("Unsupported SSO handoff type.");
-  }
-
-  const form = document.createElement("form");
-  form.method = "post";
-  form.action = handoff.url;
-  form.enctype =
-    handoff.enctype || "application/x-www-form-urlencoded";
-  form.referrerPolicy = "no-referrer";
-
-  for (const [name, value] of handoff.fields || []) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = String(name);
-    input.value = String(value);
-    form.append(input);
-  }
-
-  document.body.append(form);
-  form.submit();
-}
-
-async function consumeJob(jobId) {
-  launchStage.textContent = "transferring";
-  launchDetail.textContent =
-    "Consuming the one-time handoff and transferring control to the target system.";
-  appendLog(
-    "ready",
-    "One-time SSO material is ready; handing it to this browser.",
-  );
-
-  const data = await request(
-    `/api/launch-job/${encodeURIComponent(jobId)}/consume`,
-    { method: "POST" },
-  );
-
+function continueReadyJob(jobId) {
   stopElapsedClock();
   launchSpinner.querySelector("svg")?.classList.remove("animate-spin");
-  submitHandoff(data.handoff);
+  launchStage.textContent = "transferring";
+  launchDetail.textContent =
+    "The one-time SSO handoff is ready. Navigating this browser through the protected continuation route.";
+  appendLog(
+    "ready",
+    "Handoff ready; transferring control without exposing SSO material in the loading UI.",
+  );
+
+  location.replace(
+    `/launch-job/${encodeURIComponent(jobId)}/continue`,
+  );
 }
 
 async function pollJob(jobId) {
@@ -233,7 +201,7 @@ async function pollJob(jobId) {
     renderJob(job);
 
     if (job.state === "ready") {
-      await consumeJob(jobId);
+      continueReadyJob(jobId);
       return;
     }
 
