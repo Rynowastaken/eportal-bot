@@ -87,12 +87,17 @@ async function fetchFreshAbsences() {
               )
             : [];
 
+          const recognizedScore = headerScore(headers);
+
           return {
             table,
             rows,
             headers,
             headerRow,
-            score: headerScore(headers) + Math.min(rows.length, 12) * 0.1,
+            score:
+              recognizedScore > 0
+                ? recognizedScore + Math.min(rows.length, 12) * 0.1
+                : 0,
           };
         })
         .filter((candidate) => candidate.rows.length > 0)
