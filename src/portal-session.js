@@ -445,7 +445,7 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
       if ((await button.count()) !== 1) {
         const error = new Error(
-          "The selected ePortal module button was not found on the authenticated dashboard.",
+          "The selected ePortal module is not present on the authenticated dashboard.",
         );
         error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
         throw error;
@@ -673,78 +673,80 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       for (const page of context.pages()) notePage(page);
       context.on("page", notePage);
 
+      // ePortal's openModule() ultimately performs window.open(moduleUrl).
+      // Create that popup page ourselves so request interception is installed
+      // before its very first navigation. This prevents the server Chromium
+      // from consuming a one-time external SSO hop (for example WebMail's
+      // /cgi-bin/login.sso) before we can hand it to the client browser.
+      const launcher = await context.newPage();
+      notePage(launcher);
+
       try {
-        await button.click({ timeout: 10_000 });
+        await launcher.goto(moduleUrl(module.id), {
+          waitUntil: "commit",
+          timeout: 10_000,
+          referer: EPORTAL_DASHBOARD,
+        }).catch((error) => {
+          // An intercepted external navigation is expected to abort goto().
+          if (!settled) throw error;
+        });
 
         setTimeout(() => {
           void (async () => {
             if (settled) return;
 
-            for (const page of context.pages()) {
-              try {
-                const current = new URL(page.url());
-                if (current.origin !== eportalOrigin) continue;
+            try {
+              const current = new URL(launcher.url());
+              if (current.origin !== eportalOrigin) return;
 
-                const summary = await page.evaluate(() => {
-                  const externalish = (value) => {
-                    if (!value) return null;
-                    try {
-                      const url = new URL(value, location.href);
-                      return url.origin === location.origin
-                        ? null
-                        : { host: url.hostname, path: url.pathname };
-                    } catch {
-                      return null;
-                    }
-                  };
-
-                  const forms = [...document.forms]
-                    .map((form) => ({
-                      method: String(form.method || "GET").toUpperCase(),
-                      target: externalish(form.action),
-                    }))
-                    .filter((entry) => entry.target)
-                    .slice(0, 4);
-
-                  const links = [...document.querySelectorAll("a[href]")]
-                    .map((anchor) => externalish(anchor.href))
-                    .filter(Boolean)
-                    .slice(0, 4);
-
-                  const meta = document.querySelector(
-                    'meta[http-equiv="refresh" i]',
-                  );
-                  let refresh = null;
-
-                  if (meta?.content) {
-                    const match = meta.content.match(/url\s*=\s*(.+)$/i);
-                    if (match) refresh = externalish(match[1].replace(/^['"]|['"]$/g, ""));
+              const summary = await launcher.evaluate(() => {
+                const externalish = (value) => {
+                  if (!value) return null;
+                  try {
+                    const url = new URL(value, location.href);
+                    return url.origin === location.origin
+                      ? null
+                      : { host: url.hostname, path: url.pathname };
+                  } catch {
+                    return null;
                   }
+                };
 
-                  return {
-                    title: document.title.slice(0, 120),
-                    forms,
-                    links,
-                    refresh,
-                  };
-                });
+                const forms = [...document.forms]
+                  .map((form) => ({
+                    method: String(form.method || "GET").toUpperCase(),
+                    target: externalish(form.action),
+                  }))
+                  .filter((entry) => entry.target)
+                  .slice(0, 4);
 
-                console.log(
-                  `[handoff] inspect ${module.id}: ${safeUrlLabel(page.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms)}; links=${JSON.stringify(summary.links)}; refresh=${JSON.stringify(summary.refresh)}`,
-                );
-              } catch {
-                // Page may close while being inspected.
-              }
+                const links = [...document.querySelectorAll("a[href]")]
+                  .map((anchor) => externalish(anchor.href))
+                  .filter(Boolean)
+                  .slice(0, 4);
+
+                return {
+                  title: document.title.slice(0, 120),
+                  forms,
+                  links,
+                };
+              });
+
+              console.log(
+                `[handoff] launcher inspect ${module.id}: ${safeUrlLabel(launcher.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms)}; links=${JSON.stringify(summary.links)}`,
+              );
+            } catch {
+              // Launcher may close or be replaced while being inspected.
             }
           })();
-        }, 2000);
+        }, 1200);
       } catch (error) {
         if (!settled) {
-          const clickError = new Error(
-            "Could not trigger the selected ePortal module from the authenticated dashboard.",
+          const launchError = new Error(
+            "Could not launch the selected ePortal module.",
           );
-          clickError.code = "EPORTAL_HANDOFF_UNAVAILABLE";
-          finish(rejectHandoff, clickError);
+          launchError.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+          finish(rejectHandoff, launchError);
         }
       }
 
