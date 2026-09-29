@@ -6,6 +6,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, publicModules } from "./src/eportal.js";
 import {
+  proxyActivityRelay,
+  startActivityRelay,
+} from "./src/activity-relay.js";
+import {
   applyLoginBridgeAction,
   getLoginBridgeImage,
   getLoginBridgeState,
@@ -239,6 +243,29 @@ const server = http.createServer(async (req, res) => {
   );
 
   try {
+    if (url.pathname.startsWith("/activity-relay/")) {
+      try {
+        await proxyActivityRelay(req, res, url);
+      } catch (error) {
+        console.error(
+          "Activity relay failed:",
+          error?.message || error,
+        );
+
+        if (!res.headersSent) {
+          sendError(
+            res,
+            502,
+            error?.message || "Activity relay failed.",
+            error?.code || "ACTIVITY_RELAY_UNAVAILABLE",
+          );
+        } else {
+          res.end();
+        }
+      }
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/server/status") {
       sendJson(res, 200, {
         startedAt: serverStartedAt,
@@ -363,7 +390,14 @@ const server = http.createServer(async (req, res) => {
 
     if (goMatch) {
       try {
-        const handoff = await createModuleHandoff(goMatch[1]);
+        const moduleId = goMatch[1];
+        const handoff = await createModuleHandoff(moduleId);
+
+        if (moduleId === "activity") {
+          const relay = await startActivityRelay(handoff);
+          redirect(res, relay.launchPath);
+          return;
+        }
 
         if (handoff?.type === "get") {
           redirect(res, handoff.url);
@@ -400,7 +434,8 @@ const server = http.createServer(async (req, res) => {
 
         if (
           error?.code === "EPORTAL_HANDOFF_POST_REQUIRED" ||
-          error?.code === "EPORTAL_HANDOFF_POST_UNSUPPORTED"
+          error?.code === "EPORTAL_HANDOFF_POST_UNSUPPORTED" ||
+          error?.code === "ACTIVITY_RELAY_UNAVAILABLE"
         ) {
           sendError(res, 502, error.message, error.code);
           return;
