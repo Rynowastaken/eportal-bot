@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -11,16 +10,15 @@ const required = [
   "server.js",
   "src/eportal.js",
   "src/portal-session.js",
-  "src/remote-login.js",
+  "src/login-bridge.js",
   "scripts/portal-login.mjs",
-  "scripts/portal-login-remote.mjs",
   "scripts/portal-status.mjs",
   "scripts/portal-run.mjs",
   "public/index.html",
-  "public/remote-login.html",
+  "public/server-login.html",
   "public/app.js",
-  "public/remote-login.js",
-  "public/remote-login.css",
+  "public/server-login.js",
+  "public/server-login.css",
   "public/app.css",
   "public/userscript/nutc-portal.user.js",
 ];
@@ -42,16 +40,7 @@ console.log("NUTC Portal runtime check");
 console.log(`  platform: ${process.platform} (${process.arch})`);
 console.log(`  node: ${process.version}`);
 console.log("  interactive ePortal login: server Playwright via npm run login");
-console.log("  remote login: npm run login:remote (requires xpra + HTML5 client)");
-const xpraCheck = spawnSync("xpra", ["--version"], {
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "ignore"],
-});
-console.log(
-  xpraCheck.status === 0
-    ? `  xpra binary: ${xpraCheck.stdout.trim() || "available"}`
-    : "  xpra binary: not found (optional; required only for login:remote)",
-);
+console.log("  interactive server login: native HTML bridge at /server-login/");
 console.log("  server-side browser: required for background/scheduled work");
 console.log("  persistent profile: .eportal-profile/");
 console.log("  background session check: npm run portal:status");
