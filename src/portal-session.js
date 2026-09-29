@@ -640,6 +640,197 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         return true;
       };
 
+      await context.exposeBinding(
+        "__nutcCaptureHandoff",
+        async (_source, payload) => {
+          if (settled || !payload || typeof payload !== "object") return false;
+
+          try {
+            const handoffUrl = normalizeExternalHandoffUrl(
+              new URL(String(payload.url || "")),
+              eportalOrigin,
+            );
+
+            if (!handoffUrl) return false;
+
+            const method = String(payload.method || "GET").toUpperCase();
+            let result;
+
+            if (method === "GET") {
+              result = {
+                type: "get",
+                url: handoffUrl.toString(),
+              };
+            } else if (method === "POST") {
+              const fields = Array.isArray(payload.fields)
+                ? payload.fields
+                    .filter(
+                      (entry) =>
+                        Array.isArray(entry) &&
+                        entry.length === 2 &&
+                        typeof entry[0] === "string" &&
+                        typeof entry[1] === "string",
+                    )
+                    .slice(0, 200)
+                : [];
+
+              result = {
+                type: "post",
+                url: handoffUrl.toString(),
+                fields,
+                enctype:
+                  payload.enctype === "multipart/form-data"
+                    ? "multipart/form-data"
+                    : "application/x-www-form-urlencoded",
+              };
+            } else {
+              return false;
+            }
+
+            console.log(
+              `[handoff] captured page-side handoff for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
+            );
+
+            finish(resolveHandoff, result);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      );
+
+      await context.addInitScript(() => {
+        const binding = "__nutcCaptureHandoff";
+
+        const externalTarget = (raw) => {
+          try {
+            const target = new URL(String(raw || ""), location.href);
+
+            if (!/^https?:$/.test(target.protocol)) return null;
+            if (target.origin === location.origin) return null;
+
+            return target;
+          } catch {
+            return null;
+          }
+        };
+
+        const notify = (payload) => {
+          try {
+            const fn = window[binding];
+            if (typeof fn === "function") void fn(payload);
+          } catch {
+            // Best effort. Network interception remains as a fallback.
+          }
+        };
+
+        const formPayload = (form, submitter = null) => {
+          const target = externalTarget(form.action || location.href);
+          if (!target) return null;
+
+          const method = String(form.method || "GET").toUpperCase();
+          const enctype = String(
+            form.enctype || "application/x-www-form-urlencoded",
+          ).toLowerCase();
+
+          const fields = [];
+          let hasFiles = false;
+
+          try {
+            const data = new FormData(form);
+
+            if (
+              submitter &&
+              submitter.name &&
+              !submitter.disabled
+            ) {
+              data.append(submitter.name, submitter.value || "");
+            }
+
+            for (const [name, value] of data.entries()) {
+              if (typeof value !== "string") {
+                hasFiles = true;
+                continue;
+              }
+
+              fields.push([String(name), value]);
+            }
+          } catch {
+            return null;
+          }
+
+          if (hasFiles) return null;
+
+          if (method === "GET") {
+            for (const [name, value] of fields) {
+              target.searchParams.append(name, value);
+            }
+
+            return {
+              method: "GET",
+              url: target.href,
+              fields: [],
+              enctype,
+            };
+          }
+
+          if (method !== "POST") return null;
+
+          return {
+            method: "POST",
+            url: target.href,
+            fields,
+            enctype,
+          };
+        };
+
+        const nativeOpen = window.open;
+
+        window.open = function patchedOpen(url, target, features) {
+          const external = externalTarget(url);
+
+          if (external) {
+            notify({
+              method: "GET",
+              url: external.href,
+            });
+
+            return null;
+          }
+
+          return nativeOpen.call(window, url, target, features);
+        };
+
+        const nativeSubmit = HTMLFormElement.prototype.submit;
+
+        HTMLFormElement.prototype.submit = function patchedSubmit() {
+          const payload = formPayload(this);
+
+          if (payload) {
+            notify(payload);
+            return;
+          }
+
+          return nativeSubmit.call(this);
+        };
+
+        document.addEventListener(
+          "submit",
+          (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement)) return;
+
+            const payload = formPayload(form, event.submitter || null);
+            if (!payload) return;
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            notify(payload);
+          },
+          true,
+        );
+      });
+
       await context.route("**/*", async (route) => {
         const request = route.request();
 
