@@ -725,6 +725,10 @@ export async function stopLoginBridge(token) {
   return { ok: true };
 }
 
+export async function shutdownLoginBridge() {
+  await closeActive();
+}
+
 export function getLoginBridgeSummary() {
   return {
     active: Boolean(active && !active.complete),
