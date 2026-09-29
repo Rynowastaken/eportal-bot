@@ -1,7 +1,6 @@
 const moduleGrid = document.querySelector("#moduleGrid");
 const serverMenu = document.querySelector("#serverMenu");
 const serverStatusButton = document.querySelector("#serverStatusButton");
-const serverStatusDot = document.querySelector("#serverStatusDot");
 const serverStatusText = document.querySelector("#serverStatusText");
 const serverStatusChevron = document.querySelector("#serverStatusChevron");
 const serverStatusMenu = document.querySelector("#serverStatusMenu");
@@ -156,24 +155,20 @@ function setServerStatus(status) {
 
   let label = "需登入";
   let detail = "Server ePortal 尚未登入";
-  let dotColor = "#f07178";
   let canLogout = false;
 
   if (bridgeActive || state === "busy") {
     label = "使用中";
     detail = "Server ePortal 正在使用中";
-    dotColor = "var(--accent)";
   } else if (state === "valid") {
     label = "已連線";
     detail = "Server ePortal 已登入";
-    dotColor = "#7fd5ad";
     canLogout = true;
   } else if (state === "error") {
     label = "重試";
     detail = status?.error || "無法檢查 Server ePortal";
   }
 
-  serverStatusDot.style.backgroundColor = dotColor;
   serverStatusText.textContent = label;
   serverStatusButton.title = detail;
   serverStatusButton.setAttribute("aria-label", detail);
