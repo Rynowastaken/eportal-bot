@@ -4,6 +4,11 @@ const moduleLoadingModules = document.querySelector("#moduleLoadingModules");
 const moduleLoadingPortal = document.querySelector("#moduleLoadingPortal");
 const moduleLoadingDetail = document.querySelector("#moduleLoadingDetail");
 const moduleLoadingElapsed = document.querySelector("#moduleLoadingElapsed");
+const classScheduleCard = document.querySelector("#classScheduleCard");
+const scheduleDayTabs = document.querySelector("#scheduleDayTabs");
+const scheduleContent = document.querySelector("#scheduleContent");
+const scheduleMeta = document.querySelector("#scheduleMeta");
+const scheduleRefreshButton = document.querySelector("#scheduleRefreshButton");
 const portalBackdrop = document.querySelector("#portalBackdrop");
 const portalHeader = document.querySelector("#portalHeader");
 const portalIdentity = document.querySelector("#portalIdentity");
@@ -68,6 +73,8 @@ let lastStatusIconKind = "";
 let initialModulesAnimated = false;
 let statusPointerInside = false;
 let statusFocusInside = false;
+let classScheduleData = null;
+let selectedScheduleDay = 0;
 
 const accountNameKey = "nutc-portal-account-name-v1";
 const accountAvatarKey = "nutc-portal-account-avatar-v1";
@@ -88,7 +95,12 @@ async function api(path) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || `Request failed (${response.status})`);
+    const error = new Error(
+      data.error || `Request failed (${response.status})`,
+    );
+    error.code = data.code || "";
+    error.status = response.status;
+    throw error;
   }
 
   return data;
@@ -670,6 +682,388 @@ function setServerStatus(status) {
   serverLogoutAction.classList.toggle("hidden", !canLogout);
   serverLogoutAction.classList.toggle("flex", canLogout);
 }
+
+function taipeiDayIndex() {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    weekday: "short",
+  }).format(new Date());
+
+  return {
+    Mon: 0,
+    Tue: 1,
+    Wed: 2,
+    Thu: 3,
+    Fri: 4,
+    Sat: 5,
+    Sun: 6,
+  }[weekday] ?? 0;
+}
+
+function taipeiMinutesNow() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(
+    parts.find((part) => part.type === "minute")?.value || 0,
+  );
+
+  return hour * 60 + minute;
+}
+
+function clockMinutes(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function sameScheduleCourse(left, right) {
+  return (
+    left?.name === right?.name &&
+    left?.teacher === right?.teacher &&
+    left?.room === right?.room
+  );
+}
+
+function scheduleBlocksForDay(dayIndex) {
+  if (!classScheduleData?.periods) return [];
+
+  const blocks = [];
+
+  classScheduleData.periods.forEach((period, periodIndex) => {
+    const course = period.days?.[dayIndex] || {};
+    if (!course.name && !course.teacher && !course.room) return;
+
+    const [startTime = "", endTime = ""] = String(period.time || "").split("~");
+    const previous = blocks.at(-1);
+    const gap =
+      previous && clockMinutes(startTime) !== null
+        ? clockMinutes(startTime) - clockMinutes(previous.endTime)
+        : null;
+
+    if (
+      previous &&
+      previous.endPeriodIndex === periodIndex - 1 &&
+      sameScheduleCourse(previous, course) &&
+      gap !== null &&
+      gap >= 0 &&
+      gap <= 30
+    ) {
+      previous.endPeriodIndex = periodIndex;
+      previous.endSlot = period.slot;
+      previous.endTime = endTime;
+      return;
+    }
+
+    blocks.push({
+      ...course,
+      startPeriodIndex: periodIndex,
+      endPeriodIndex: periodIndex,
+      startSlot: period.slot,
+      endSlot: period.slot,
+      startTime,
+      endTime,
+    });
+  });
+
+  return blocks;
+}
+
+function renderScheduleTabs() {
+  if (!scheduleDayTabs) return;
+
+  const labels = ["一", "二", "三", "四", "五", "六", "日"];
+  const today = taipeiDayIndex();
+
+  scheduleDayTabs.replaceChildren();
+
+  labels.forEach((label, index) => {
+    const selected = selectedScheduleDay === index;
+    const isToday = today === index;
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.role = "tab";
+    button.setAttribute("aria-selected", String(selected));
+    button.setAttribute("aria-label", `星期${label}`);
+    button.className = selected
+      ? "relative min-h-[42px] rounded-xl border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1 text-[11px] font-semibold text-[var(--primary)] transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:text-xs"
+      : "relative min-h-[42px] rounded-xl border border-white/[.09] bg-white/[.035] px-1 text-[11px] font-semibold text-[var(--muted)] transition hover:border-white/[.16] hover:bg-white/[.07] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:text-xs";
+
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.append(text);
+
+    if (isToday) {
+      const marker = document.createElement("span");
+      marker.className =
+        "absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[var(--primary)]";
+      marker.setAttribute("aria-hidden", "true");
+      button.append(marker);
+    }
+
+    button.addEventListener("click", () => {
+      selectedScheduleDay = index;
+      renderScheduleTabs();
+      renderScheduleDay({ animate: true });
+    });
+
+    scheduleDayTabs.append(button);
+  });
+}
+
+function setScheduleMessage(message, { kind = "info" } = {}) {
+  if (!scheduleContent) return;
+
+  scheduleContent.setAttribute("aria-busy", String(kind === "loading"));
+  scheduleContent.replaceChildren();
+
+  const card = document.createElement("div");
+  card.className =
+    "flex min-h-[96px] items-center justify-center gap-3 rounded-[16px] border border-white/[.08] bg-white/[.035] px-4 text-center text-sm font-medium text-[var(--muted)]";
+
+  const icon = document.createElement("i");
+  icon.dataset.lucide =
+    kind === "loading"
+      ? "loader-circle"
+      : kind === "error"
+        ? "circle-alert"
+        : kind === "login"
+          ? "log-in"
+          : "calendar-days";
+  icon.className =
+    "h-4 w-4 shrink-0 " + (kind === "loading" ? "animate-spin" : "");
+
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  card.append(icon, text);
+  scheduleContent.append(card);
+  renderIcons();
+}
+
+function renderScheduleDay({ animate = false } = {}) {
+  if (!scheduleContent || !classScheduleData) return;
+
+  const blocks = scheduleBlocksForDay(selectedScheduleDay);
+  const today = taipeiDayIndex();
+  const nowMinutes = taipeiMinutesNow();
+
+  scheduleContent.setAttribute("aria-busy", "false");
+  scheduleContent.replaceChildren();
+
+  if (!blocks.length) {
+    setScheduleMessage("今天沒有排定課程。");
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "grid gap-2.5";
+
+  blocks.forEach((block, index) => {
+    const accent = moduleAccent(index);
+    const rgba = window.NutcTheme?.rgba || ((color) => color);
+    const startMinutes = clockMinutes(block.startTime);
+    const endMinutes = clockMinutes(block.endTime);
+    const isNow =
+      selectedScheduleDay === today &&
+      startMinutes !== null &&
+      endMinutes !== null &&
+      nowMinutes >= startMinutes &&
+      nowMinutes <= endMinutes;
+
+    const row = document.createElement("article");
+    row.className =
+      "flex items-stretch gap-3 rounded-[16px] border p-3 shadow-sm sm:p-3.5";
+    row.style.borderColor = rgba(accent, isNow ? 0.36 : 0.16);
+    row.style.background = isNow
+      ? `linear-gradient(110deg, ${rgba(accent, 0.12)} 0%, rgba(255,255,255,.045) 100%)`
+      : "rgba(255,255,255,.035)";
+
+    const time = document.createElement("div");
+    time.className =
+      "flex w-[78px] shrink-0 flex-col justify-center border-r border-white/[.08] pr-3 sm:w-[92px]";
+
+    const timeText = document.createElement("strong");
+    timeText.className =
+      "text-xs font-semibold tabular-nums text-[var(--foreground)] sm:text-sm";
+    timeText.textContent = `${block.startTime}–${block.endTime}`;
+
+    const slotText = document.createElement("span");
+    slotText.className =
+      "mt-1 text-[10px] font-semibold text-[var(--faint)] sm:text-[11px]";
+    slotText.textContent =
+      block.startSlot === block.endSlot
+        ? `第 ${block.startSlot} 節`
+        : `第 ${block.startSlot}–${block.endSlot} 節`;
+
+    time.append(timeText, slotText);
+
+    const copy = document.createElement("div");
+    copy.className = "min-w-0 flex-1";
+
+    const titleLine = document.createElement("div");
+    titleLine.className = "flex flex-wrap items-center gap-2";
+
+    const title = document.createElement("h3");
+    title.className =
+      "min-w-0 flex-1 truncate text-sm font-semibold tracking-[-0.015em] text-[var(--foreground)] sm:text-[15px]";
+    title.textContent = block.name || "未命名課程";
+    titleLine.append(title);
+
+    if (isNow) {
+      const badge = document.createElement("span");
+      badge.className =
+        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--primary)]";
+      badge.textContent = "現在";
+      titleLine.append(badge);
+    }
+
+    const detail = document.createElement("p");
+    detail.className =
+      "mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-[var(--muted)]";
+
+    if (block.room) {
+      const room = document.createElement("span");
+      room.className = "inline-flex items-center gap-1";
+      room.innerHTML =
+        '<i data-lucide="map-pin" class="h-3.5 w-3.5"></i><span></span>';
+      room.querySelector("span").textContent = block.room;
+      detail.append(room);
+    }
+
+    if (block.teacher) {
+      const teacher = document.createElement("span");
+      teacher.className = "inline-flex items-center gap-1";
+      teacher.innerHTML =
+        '<i data-lucide="user-round" class="h-3.5 w-3.5"></i><span></span>';
+      teacher.querySelector("span").textContent = block.teacher;
+      detail.append(teacher);
+    }
+
+    if (!detail.children.length) {
+      const fallback = document.createElement("span");
+      fallback.textContent = "AIS 未提供教室或教師資訊";
+      detail.append(fallback);
+    }
+
+    copy.append(titleLine, detail);
+    row.append(time, copy);
+    list.append(row);
+  });
+
+  scheduleContent.append(list);
+  renderIcons();
+
+  if (animate) {
+    void motion?.stagger?.(list.children, {
+      step: 36,
+      duration: 260,
+      y: 7,
+      scale: 0.99,
+      maxDelay: 150,
+    });
+  }
+}
+
+function updateScheduleMeta(data) {
+  if (!scheduleMeta) return;
+
+  const fetched = data?.fetchedAt
+    ? new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(data.fetchedAt))
+    : "";
+
+  const parts = [];
+  if (data?.termLabel) parts.push(data.termLabel);
+  parts.push(data?.stale ? "顯示快取" : "NUTC AIS");
+  if (fetched) parts.push(`更新 ${fetched}`);
+
+  scheduleMeta.textContent = parts.join(" · ");
+  scheduleMeta.title = data?.refreshError || "";
+}
+
+async function loadClassSchedule({ force = false, animate = false } = {}) {
+  if (!scheduleRefreshButton) return;
+
+  const refreshIcon = scheduleRefreshButton.querySelector("svg");
+  scheduleRefreshButton.disabled = true;
+  refreshIcon?.classList.add("animate-spin");
+
+  if (!classScheduleData) {
+    setScheduleMessage("正在從 AIS 載入課表…", { kind: "loading" });
+    scheduleMeta.textContent = "正在連線 NUTC AIS";
+  } else {
+    scheduleMeta.textContent = "正在更新課表…";
+  }
+
+  try {
+    const data = await api(
+      force ? "/api/class-schedule?refresh=1" : "/api/class-schedule",
+    );
+
+    if (!Array.isArray(data?.periods)) {
+      throw new Error("AIS 課表資料格式不正確。");
+    }
+
+    classScheduleData = data;
+    renderScheduleTabs();
+    renderScheduleDay({ animate });
+    updateScheduleMeta(data);
+  } catch (error) {
+    if (classScheduleData) {
+      scheduleMeta.textContent = "更新失敗，保留目前課表";
+      scheduleMeta.title = error?.message || "";
+      return;
+    }
+
+    if (error?.status === 401 || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+      scheduleMeta.textContent = "需要 Server ePortal 登入";
+      setScheduleMessage("請先從右上角登入 Server ePortal，再載入課表。", {
+        kind: "login",
+      });
+    } else if (error?.status === 409) {
+      scheduleMeta.textContent = "Server ePortal 使用中";
+      setScheduleMessage("Server ePortal 正在執行其他操作，稍後按更新重試。", {
+        kind: "info",
+      });
+    } else {
+      scheduleMeta.textContent = "課表載入失敗";
+      scheduleMeta.title = error?.message || "";
+      setScheduleMessage(error?.message || "無法載入 AIS 課表。", {
+        kind: "error",
+      });
+    }
+  } finally {
+    scheduleRefreshButton.disabled = false;
+    scheduleRefreshButton.querySelector("svg")?.classList.remove("animate-spin");
+  }
+}
+
+function resetClassScheduleForLoggedOutState() {
+  classScheduleData = null;
+  renderScheduleTabs();
+  scheduleMeta.textContent = "需要 Server ePortal 登入";
+  scheduleMeta.title = "";
+  setScheduleMessage("請先從右上角登入 Server ePortal，再載入課表。", {
+    kind: "login",
+  });
+}
+
+scheduleRefreshButton?.addEventListener("click", () => {
+  void loadClassSchedule({ force: true, animate: true });
+});
 
 function openModule(module) {
   window.location.assign(module.launchPath);
@@ -1264,6 +1658,7 @@ serverLogoutAction.addEventListener("click", async () => {
       status: data.status || "needs-login",
       loginBridge: { active: false },
     });
+    resetClassScheduleForLoggedOutState();
     setServerMenuOpen(false);
   } catch (error) {
     console.error("Server ePortal logout failed:", error);
@@ -1295,6 +1690,7 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("nutc-theme-change", () => {
   syncThemeMenu();
   if (modulesCache.length) renderModules(modulesCache, { animate: false });
+  if (classScheduleData) renderScheduleDay({ animate: false });
 });
 
 if (typeof ResizeObserver !== "undefined") {
@@ -1314,6 +1710,8 @@ if (typeof ResizeObserver !== "undefined") {
   ]);
   applyAccountProfile();
   syncThemeMenu();
+  selectedScheduleDay = taipeiDayIndex();
+  renderScheduleTabs();
   renderIcons();
   updateStatusButtonExpansion();
 
@@ -1397,10 +1795,23 @@ if (typeof ResizeObserver !== "undefined") {
 
   if (statusResult.status === "fulfilled") {
     setServerStatus(statusResult.value);
+
+    if (statusResult.value.status === "valid") {
+      void loadClassSchedule({ animate: true });
+    } else if (statusResult.value.status === "busy") {
+      scheduleMeta.textContent = "Server ePortal 使用中";
+      setScheduleMessage("Server ePortal 正在執行其他操作，稍後按更新載入課表。");
+    } else {
+      resetClassScheduleForLoggedOutState();
+    }
   } else {
     setServerStatus({
       status: "error",
       error: statusResult.reason?.message,
+    });
+    scheduleMeta.textContent = "無法確認 Server ePortal 狀態";
+    setScheduleMessage("目前無法確認登入狀態，稍後按更新重試。", {
+      kind: "error",
     });
   }
 })();
