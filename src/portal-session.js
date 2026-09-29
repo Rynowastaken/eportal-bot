@@ -1032,8 +1032,24 @@ async function captureHttpRedirectHandoff(context, module, eportalOrigin) {
   return null;
 }
 
-export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
+export async function createModuleHandoff(
+  moduleId,
+  { timeout = 30_000, onProgress = null } = {},
+) {
   const module = moduleById(moduleId);
+  const report = (stage, detail) => {
+    try {
+      onProgress?.({
+        stage,
+        detail,
+        at: new Date().toISOString(),
+      });
+    } catch {
+      // Progress reporting must never interrupt SSO generation.
+    }
+  };
+
+  report("profile-check", "Checking the persistent ePortal profile.");
 
   if (!(await profileExists())) {
     const error = new Error(
@@ -1043,17 +1059,37 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
     throw error;
   }
 
+  report(
+    "profile-lock",
+    "Waiting for exclusive access to the persistent browser profile.",
+  );
+
   return withProfileLock(async () => {
     let context;
 
     try {
+      report(
+        "browser-launch",
+        "Launching headless Chromium with the saved ePortal profile.",
+      );
+
       context = await openServerPortalSession({
         headless: true,
         launchTimeout: 15_000,
       });
 
+      report(
+        "browser-ready",
+        "Chromium is running; opening the authenticated ePortal dashboard.",
+      );
+
       const dashboard =
         context.pages()[0] || (await context.newPage());
+
+      report(
+        "dashboard-load",
+        "Loading the ePortal dashboard and waiting for DOM readiness.",
+      );
 
       await dashboard.goto(EPORTAL_DASHBOARD, {
         waitUntil: "domcontentloaded",
@@ -1071,6 +1107,11 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         throw error;
       }
 
+      report(
+        "session-valid",
+        "Authenticated ePortal session confirmed; locating the selected module.",
+      );
+
       const button = dashboard.locator(
         `button[data-item-uuid="${module.uuid}"]`,
       );
@@ -1086,14 +1127,30 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       const eportalOrigin = new URL(EPORTAL_HOME).origin;
 
       if (module.path.startsWith("/ext_module/")) {
+        report(
+          "handoff-probe",
+          "Probing the module route for a transferable SSO redirect.",
+        );
+
         const probed = await captureHttpRedirectHandoff(
           context,
           module,
           eportalOrigin,
         );
 
-        if (probed) return probed;
+        if (probed) {
+          report(
+            "handoff-captured",
+            "A transferable SSO handoff was captured from the HTTP redirect flow.",
+          );
+          return probed;
+        }
       }
+
+      report(
+        "handoff-browser",
+        "HTTP probing was insufficient; switching to browser-level handoff discovery.",
+      );
 
       const observed = {
         pages: new Set(),
@@ -1566,6 +1623,10 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         finish(resolveHandoff, result);
       });
 
+      report(
+        "module-request",
+        "Triggering the selected ePortal module and monitoring its navigation flow.",
+      );
       console.log(`[handoff] triggering module ${module.id}`);
 
       const pageErrors = [];
@@ -2026,7 +2087,12 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       // Race the actual capture against the timeout promise. The timeout promise
       // intentionally carries no URL/token material.
       try {
-        return await Promise.race([handoffResult, handoff]);
+        const result = await Promise.race([handoffResult, handoff]);
+        report(
+          "handoff-captured",
+          "Transferable SSO material captured; preparing client handoff.",
+        );
+        return result;
       } catch (error) {
         if (
           error?.code === "EPORTAL_HANDOFF_UNAVAILABLE" &&
