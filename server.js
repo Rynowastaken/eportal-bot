@@ -665,12 +665,27 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const launchConsumeMatch =
-      req.method === "POST" &&
-      url.pathname.match(/^\/api\/launch-job\/([a-f0-9]{32})\/consume$/);
+    if (req.method === "GET" && url.pathname === "/api/sync") {
+      sendJson(res, 200, preferenceStore.get());
+      return;
+    }
 
-    if (launchConsumeMatch) {
-      const job = launchJobs.get(launchConsumeMatch[1]);
+    if (req.method === "POST" && url.pathname === "/api/sync") {
+      const body = await readJsonBody(req);
+      const saved = await preferenceStore.set(body);
+      sendJson(res, 200, {
+        ok: true,
+        updatedAt: saved.updatedAt,
+      });
+      return;
+    }
+
+    const launchContinueMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/launch-job\/([a-f0-9]{32})\/continue$/);
+
+    if (launchContinueMatch) {
+      const job = launchJobs.get(launchContinueMatch[1]);
 
       if (!job) {
         sendError(res, 404, "Launch job not found or expired.");
@@ -693,29 +708,22 @@ const server = http.createServer(async (req, res) => {
       }
 
       const handoff = job.result;
-      sendJson(res, 200, {
-        ok: true,
-        handoff,
-      });
-
       res.once("finish", () => {
         launchJobs.delete(job.id);
       });
-      return;
-    }
 
-    if (req.method === "GET" && url.pathname === "/api/sync") {
-      sendJson(res, 200, preferenceStore.get());
-      return;
-    }
+      if (handoff.type === "get") {
+        redirect(res, handoff.url);
+        return;
+      }
 
-    if (req.method === "POST" && url.pathname === "/api/sync") {
-      const body = await readJsonBody(req);
-      const saved = await preferenceStore.set(body);
-      sendJson(res, 200, {
-        ok: true,
-        updatedAt: saved.updatedAt,
-      });
+      if (handoff.type === "post") {
+        sendPostHandoff(res, handoff);
+        return;
+      }
+
+      launchJobs.delete(job.id);
+      sendError(res, 502, "Unsupported launch handoff type.");
       return;
     }
 
