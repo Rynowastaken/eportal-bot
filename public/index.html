@@ -5,107 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=16" />
+    <link rel="stylesheet" href="/app.css?v=17" />
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
-        <div class="topbar-brand">
-          <div class="wordmark-wide" aria-label="國立臺中科技大學">國立臺中科技大學</div>
-          <div>
-            <p class="eyebrow">NUTC PERSONAL PORTAL</p>
-            <h1>校園 Dashboard</h1>
-          </div>
+        <div class="brand">
+          <p>國立臺中科技大學</p>
+          <h1>NUTC Portal</h1>
         </div>
 
-        <button id="loginButton" class="header-action focus-ring" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-          <span>檢查此瀏覽器 ePortal</span>
+        <button
+          id="serverStatusButton"
+          class="server-status focus-ring"
+          type="button"
+          aria-label="Server ePortal 登入狀態"
+        >
+          <span id="serverStatusDot" class="status-dot checking"></span>
+          <span id="serverStatusText">檢查中</span>
         </button>
       </header>
 
-      <section class="hero glass">
-        <div class="hero-copy">
-          <p class="eyebrow">DUAL ePORTAL SESSION</p>
-          <h2>Server 與目前瀏覽器各自維持獨立 ePortal session。</h2>
-          <p>
-            Server 使用 .eportal-profile/ 的 Playwright persistent profile。點卡片時，
-            Server 會向 ePortal 取得該系統當下產生的短效 SSO handoff，然後立刻把目前瀏覽器
-            redirect 到目標系統。Incognito / 訪客模式不需要先持有 ePortal cookie。
-          </p>
-        </div>
-
-        <div class="session-panel">
-          <div class="session-head">
-            <span id="portalStatusDot" class="status-dot idle"></span>
-            <div>
-              <strong id="portalStatusTitle">此瀏覽器 ePortal 尚未檢查</strong>
-              <small id="portalStatusDetail">點登入或任一系統卡片即可檢查。</small>
-            </div>
-          </div>
-
-          <button id="sessionLoginButton" class="session-login focus-ring" type="button">
-            <span>檢查此瀏覽器 ePortal</span>
-            <span aria-hidden="true">↗</span>
-          </button>
-
-          <p class="session-note">
-            自動登入偵測使用 NUTC Portal Userscript。
-            <a class="inline-link focus-ring" href="/userscript/nutc-portal.user.js">安裝 / 更新 Userscript</a>
-          </p>
-
-          <div class="session-head server-session-head">
-            <span id="serverPortalStatusDot" class="status-dot idle"></span>
-            <div>
-              <strong id="serverPortalStatusTitle">Server 背景 ePortal 尚未檢查</strong>
-              <small id="serverPortalStatusDetail">供卡片 SSO handoff、背景工作與排程使用。</small>
-            </div>
-          </div>
-
-          <button
-            id="serverLoginButton"
-            class="session-login focus-ring"
-            type="button"
-          >
-            <span>登入 Server ePortal</span>
-            <span aria-hidden="true">↗</span>
-          </button>
-
-          <p class="session-note">
-            使用原生 HTML Login Bridge；不串流桌面畫面，也不把 ePortal cookie 傳到此裝置。
-          </p>
-        </div>
-      </section>
-
-      <section class="section-heading">
-        <div>
-          <p class="eyebrow">SYSTEMS</p>
-          <h2>常用校務系統</h2>
-        </div>
-        <p>
-          卡片會先向 Server 要一個新鮮的 ePortal SSO handoff，再直接開啟真正的目標系統。
-        </p>
+      <section class="systems-heading">
+        <h2>校務系統</h2>
       </section>
 
       <section id="moduleGrid" class="module-grid" aria-live="polite"></section>
-
-      <footer>
-        <span>NUTC Portal · Personal self-hosted dashboard</span>
-        <span>Cloudflare Access · Server Playwright + Client ePortal SSO</span>
-      </footer>
     </main>
 
-    <dialog id="statusDialog" class="status-dialog">
-      <section class="dialog-card glass">
-        <div class="dialog-icon"></div>
-        <h2 id="dialogTitle">狀態</h2>
-        <p id="dialogMessage"></p>
-        <div class="dialog-actions">
-          <button id="dialogClose" class="secondary-button focus-ring" type="button">關閉</button>
-        </div>
-      </section>
-    </dialog>
-
-    <script src="/app.js?v=17" type="module"></script>
+    <script src="/app.js?v=18" type="module"></script>
   </body>
 </html>
