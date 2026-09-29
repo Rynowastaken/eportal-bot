@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Opening system · NUTC Portal</title>
+    <script src="/tailwind-config.js?v=2"></script>
+    <script src="/vendor/tailwindcss-3.4.17.js"></script>
+    <script src="/vendor/lucide-1.24.0.min.js"></script>
+  </head>
+  <body
+    class="min-h-screen overflow-x-hidden bg-[#141018] font-sans text-[var(--foreground)] antialiased"
+  >
+    <div
+      id="portalBackdrop"
+      class="fixed inset-0 -z-20 bg-cover bg-center bg-fixed"
+      aria-hidden="true"
+    ></div>
+    <div
+      class="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,rgba(20,16,24,.18),rgba(20,16,24,.78))]"
+      aria-hidden="true"
+    ></div>
+
+    <main class="mx-auto flex min-h-screen w-full max-w-2xl items-center px-4 py-8 sm:px-6">
+      <section
+        class="w-full rounded-[22px] border border-white/[.12] bg-[rgba(12,10,14,.46)] p-5 shadow-[0_20px_70px_rgba(0,0,0,.36)] backdrop-blur-[22px] backdrop-saturate-[170%] sm:p-6"
+      >
+        <header class="flex items-start gap-4">
+          <div
+            id="launchSpinner"
+            class="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              class="h-5 w-5 animate-spin"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+            </svg>
+          </div>
+
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-[11px] font-semibold tracking-[0.08em] text-[var(--muted)]">
+                  NUTC PORTAL · SSO LAUNCH
+                </p>
+                <h1
+                  id="launchTitle"
+                  class="mt-1 truncate text-xl font-semibold tracking-[-0.035em] sm:text-2xl"
+                >
+                  Preparing system…
+                </h1>
+              </div>
+              <span
+                id="launchElapsed"
+                class="rounded-lg border border-white/[.10] bg-white/[.05] px-2 py-1 text-[11px] font-semibold tabular-nums text-[var(--muted)]"
+              >0.0s</span>
+            </div>
+
+            <p
+              id="launchDescription"
+              class="mt-2 text-sm font-medium leading-6 text-[var(--muted)]"
+            >
+              Creating a secure server-side ePortal handoff for this browser.
+            </p>
+          </div>
+        </header>
+
+        <div class="mt-5 rounded-[16px] border border-white/[.10] bg-white/[.04] p-4">
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-xs font-semibold text-[var(--muted)]">Current stage</span>
+            <span
+              id="launchStage"
+              class="text-xs font-semibold text-[var(--accent)]"
+            >initializing</span>
+          </div>
+          <p
+            id="launchDetail"
+            class="mt-2 text-sm font-medium leading-6 text-[var(--foreground)]"
+          >
+            Loading the launch bridge…
+          </p>
+        </div>
+
+        <div class="mt-4">
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <span class="text-xs font-semibold text-[var(--muted)]">Live progress</span>
+            <span id="launchTarget" class="text-[11px] font-medium text-[var(--faint)]"></span>
+          </div>
+          <ol
+            id="launchLog"
+            class="grid max-h-64 gap-2 overflow-y-auto rounded-[16px] border border-white/[.10] bg-black/10 p-3"
+            aria-live="polite"
+          ></ol>
+        </div>
+
+        <div
+          id="launchError"
+          class="mt-4 hidden rounded-[16px] border border-[#f07178]/25 bg-[#f07178]/[.08] p-4"
+          role="alert"
+        >
+          <strong class="text-sm font-semibold text-[#f4a0a5]">Launch failed</strong>
+          <p id="launchErrorMessage" class="mt-1 text-sm font-medium leading-6 text-[var(--muted)]"></p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              id="launchRetry"
+              class="min-h-[42px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] transition hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              type="button"
+            >
+              Retry
+            </button>
+            <button
+              id="launchLogin"
+              class="hidden min-h-[42px] rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold transition hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              type="button"
+            >
+              登入 Server ePortal
+            </button>
+            <button
+              id="launchBack"
+              class="min-h-[42px] rounded-xl border border-white/[.12] bg-white/[.05] px-4 text-sm font-semibold text-[var(--muted)] transition hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              type="button"
+            >
+              返回 Dashboard
+            </button>
+          </div>
+        </div>
+
+        <noscript>
+          <p class="mt-4 text-sm font-medium text-[#f4a0a5]">
+            JavaScript is required to prepare the secure SSO handoff.
+          </p>
+        </noscript>
+      </section>
+    </main>
+
+    <script src="/theme.js?v=3"></script>
+    <script src="/motion.js?v=1"></script>
+    <script src="/launch.js?v=1" type="module"></script>
+  </body>
+</html>
