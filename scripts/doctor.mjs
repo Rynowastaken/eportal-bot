@@ -16,6 +16,7 @@ const required = [
   "src/cloudflare-access.js",
   "scripts/portal-login.mjs",
   "scripts/deploy-check.mjs",
+  "scripts/configure-deploy.mjs",
   "scripts/portal-status.mjs",
   "scripts/portal-run.mjs",
   "public/index.html",
