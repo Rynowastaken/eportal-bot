@@ -141,7 +141,10 @@ async function serveStatic(res, pathname) {
     res.writeHead(200, {
       "Content-Type": contentType(resolved),
       "Content-Length": body.length,
-      "Cache-Control": pathname === "/" ? "no-cache" : "public, max-age=300",
+      "Cache-Control":
+        path.extname(resolved).toLowerCase() === ".html"
+          ? "no-cache"
+          : "public, max-age=300",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "Content-Security-Policy":
