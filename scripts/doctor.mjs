@@ -19,6 +19,7 @@ const required = [
   "public/server-login.js",
   "public/app.js",
   "public/theme.js",
+  "public/motion.js",
   "public/tailwind-config.js",
   "public/vendor/tailwindcss-3.4.17.js",
   "public/vendor/lucide-1.24.0.min.js",
