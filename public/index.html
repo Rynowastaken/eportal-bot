@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=15" />
+    <link rel="stylesheet" href="/app.css?v=16" />
   </head>
   <body>
     <main class="app-shell">
@@ -88,28 +88,6 @@
       </section>
 
       <section id="moduleGrid" class="module-grid" aria-live="polite"></section>
-
-      <section class="info-grid">
-        <article class="info-card glass">
-          <span class="info-icon">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4"/></svg>
-          </span>
-          <div>
-            <strong>Cloudflare Access 保護 Dashboard</strong>
-            <p>Dashboard 本身由 Cloudflare Access 保護；server-side Chromium 用於產生 SSO handoff 與背景工作。</p>
-          </div>
-        </article>
-
-        <article class="info-card glass">
-          <span class="info-icon gold">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14M4 4h16v16H4z"/></svg>
-          </span>
-          <div>
-            <strong>Session 完全分離</strong>
-            <p>Server cookie 只留在 .eportal-profile/；client cookie 只留在目前瀏覽器。Userscript 不會把 cookie 傳給 server。</p>
-          </div>
-        </article>
-      </section>
 
       <footer>
         <span>NUTC Portal · Personal self-hosted dashboard</span>
