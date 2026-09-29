@@ -89,6 +89,18 @@ function setServerPortalStatus(status) {
 
   serverPortalStatusDot.className = `status-dot ${state}`;
 
+  const serverLoginLabel = serverLoginButton.querySelector("span");
+  const bridgeActive = Boolean(status?.loginBridge?.active);
+  serverLoginButton.disabled = bridgeActive;
+
+  if (serverLoginLabel) {
+    serverLoginLabel.textContent = bridgeActive
+      ? "Login Bridge 使用中"
+      : status?.status === "valid"
+        ? "重新登入 Server ePortal"
+        : "登入 Server ePortal";
+  }
+
   if (status?.status === "valid") {
     serverPortalStatusTitle.textContent = "Server 背景 ePortal 已登入";
     const keepalive = status.keepalive;
