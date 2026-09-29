@@ -166,6 +166,13 @@ function isTrustedLegacyHttpTarget(module, rawUrl) {
   return target.protocol === "http:" && hosts.includes(target.hostname);
 }
 
+function shouldExecuteLegacyTargetInBrowser(module, rawUrl) {
+  return (
+    module.id === "activity" &&
+    isTrustedLegacyHttpTarget(module, rawUrl)
+  );
+}
+
 function normalizeExternalHandoffUrl(url, eportalOrigin) {
   const target = url instanceof URL ? new URL(url) : new URL(url);
 
@@ -1408,6 +1415,14 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         );
 
         if (!handoffUrl) {
+          if (shouldExecuteLegacyTargetInBrowser(module, target)) {
+            console.log(
+              `[handoff] allowing trusted legacy browser navigation for ${module.id}: ${target.hostname}${target.pathname}`,
+            );
+            await route.continue();
+            return;
+          }
+
           if (isTrustedLegacyHttpTarget(module, target)) {
             await route.abort("aborted");
 
@@ -1546,6 +1561,18 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
               // Chromium can pause synthetic/non-network documents such as
               // about:blank when a new page is created. Those are not SSO hops.
               if (target.protocol !== "http:" && target.protocol !== "https:") {
+                await cdp
+                  .send("Fetch.continueRequest", {
+                    requestId: event.requestId,
+                  })
+                  .catch(() => {});
+                return;
+              }
+
+              if (shouldExecuteLegacyTargetInBrowser(module, target)) {
+                console.log(
+                  `[handoff] CDP allowing trusted legacy browser navigation for ${module.id}: ${target.hostname}${target.pathname}`,
+                );
                 await cdp
                   .send("Fetch.continueRequest", {
                     requestId: event.requestId,
@@ -1735,49 +1762,191 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
             try {
               const current = new URL(launcher.url());
-              if (current.origin !== eportalOrigin) return;
+              const isEportal = current.origin === eportalOrigin;
+              const isLegacyActivity =
+                shouldExecuteLegacyTargetInBrowser(module, current);
+
+              if (!isEportal && !isLegacyActivity) return;
 
               const summary = await launcher.evaluate(() => {
-                const externalish = (value) => {
+                const targetInfo = (value) => {
                   if (!value) return null;
                   try {
                     const url = new URL(value, location.href);
-                    return url.origin === location.origin
-                      ? null
-                      : { host: url.hostname, path: url.pathname };
+                    return {
+                      href: url.href,
+                      host: url.hostname,
+                      path: url.pathname,
+                    };
                   } catch {
                     return null;
                   }
                 };
 
                 const forms = [...document.forms]
-                  .map((form) => ({
-                    method: String(form.method || "GET").toUpperCase(),
-                    target: externalish(form.action),
-                  }))
-                  .filter((entry) => entry.target)
-                  .slice(0, 4);
+                  .map((form) => {
+                    const fields = [];
+                    let interactive = false;
+
+                    try {
+                      for (const [name, value] of new FormData(form).entries()) {
+                        if (typeof value === "string") {
+                          fields.push([String(name), value]);
+                        }
+                      }
+
+                      interactive = Boolean(
+                        form.querySelector(
+                          'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), textarea, select',
+                        ),
+                      );
+                    } catch {
+                      interactive = true;
+                    }
+
+                    return {
+                      method: String(form.method || "GET").toUpperCase(),
+                      enctype: String(
+                        form.enctype ||
+                          "application/x-www-form-urlencoded",
+                      ).toLowerCase(),
+                      target: targetInfo(form.action || location.href),
+                      fields,
+                      fieldNames: fields.map(([name]) => name),
+                      interactive,
+                    };
+                  })
+                  .slice(0, 6);
 
                 const links = [...document.querySelectorAll("a[href]")]
-                  .map((anchor) => externalish(anchor.href))
+                  .map((anchor) => targetInfo(anchor.href))
                   .filter(Boolean)
-                  .slice(0, 4);
+                  .slice(0, 8);
+
+                const meta = document.querySelector(
+                  'meta[http-equiv="refresh" i]',
+                );
 
                 return {
                   title: document.title.slice(0, 120),
                   forms,
                   links,
+                  refresh: meta?.content || "",
                 };
               });
 
+              for (const form of summary.forms) {
+                if (
+                  form.interactive ||
+                  !form.target ||
+                  form.enctype !== "application/x-www-form-urlencoded"
+                ) {
+                  continue;
+                }
+
+                let target;
+                try {
+                  target = normalizeExternalHandoffUrl(
+                    new URL(form.target.href),
+                    eportalOrigin,
+                  );
+                } catch {
+                  continue;
+                }
+
+                if (!target) continue;
+
+                if (form.method === "POST") {
+                  console.log(
+                    `[handoff] runtime discovered transferable form for ${module.id}: POST ${target.hostname}${target.pathname}; fields=${form.fieldNames.join(",") || "none"}`,
+                  );
+                  finish(resolveHandoff, {
+                    type: "post",
+                    url: target.toString(),
+                    fields: form.fields,
+                    enctype: "application/x-www-form-urlencoded",
+                  });
+                  return;
+                }
+
+                if (form.method === "GET") {
+                  for (const [name, value] of form.fields) {
+                    target.searchParams.append(name, value);
+                  }
+
+                  if (looksSelfContainedGetHandoff(target)) {
+                    console.log(
+                      `[handoff] runtime discovered transferable form for ${module.id}: GET ${target.hostname}${target.pathname}`,
+                    );
+                    finish(resolveHandoff, {
+                      type: "get",
+                      url: target.toString(),
+                    });
+                    return;
+                  }
+                }
+              }
+
+              for (const link of summary.links) {
+                let target;
+                try {
+                  target = normalizeExternalHandoffUrl(
+                    new URL(link.href),
+                    eportalOrigin,
+                  );
+                } catch {
+                  continue;
+                }
+
+                if (target && looksSelfContainedGetHandoff(target)) {
+                  console.log(
+                    `[handoff] runtime discovered transferable link for ${module.id}: GET ${target.hostname}${target.pathname}`,
+                  );
+                  finish(resolveHandoff, {
+                    type: "get",
+                    url: target.toString(),
+                  });
+                  return;
+                }
+              }
+
+              const cookieNames = isLegacyActivity
+                ? (await context.cookies(current.toString()))
+                    .filter(
+                      (cookie) =>
+                        cookie.domain === current.hostname ||
+                        cookie.domain === `.${current.hostname}`,
+                    )
+                    .map((cookie) => cookie.name)
+                    .sort()
+                : [];
+
               console.log(
-                `[handoff] launcher inspect ${module.id}: ${safeUrlLabel(launcher.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms)}; links=${JSON.stringify(summary.links)}`,
+                `[handoff] runtime inspect ${module.id}: ${safeUrlLabel(launcher.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms.map((form) => ({ method: form.method, target: form.target ? { host: form.target.host, path: form.target.path } : null, fields: form.fieldNames, interactive: form.interactive })))}; links=${JSON.stringify(summary.links.map((link) => ({ host: link.host, path: link.path })))}; refresh=${JSON.stringify(summary.refresh)}; cookies=${cookieNames.join(",") || "none"}`,
               );
-            } catch {
-              // Launcher may close or be replaced while being inspected.
+
+              if (isLegacyActivity && !settled) {
+                const error = new Error(
+                  `Activity authenticated inside the server-side browser at ${safeUrlLabel(current)}, but no transferable HTTPS SSO URL or hidden form was exposed. The target session is therefore browser-bound; opening the official site in the client would require either a separate client login or an explicit Activity-only relay.`,
+                );
+                error.code = "EPORTAL_HANDOFF_SESSION_BOUND";
+                error.diagnostics = {
+                  final: safeUrlLabel(current),
+                  title: summary.title,
+                  cookieNames,
+                };
+                finish(rejectHandoff, error);
+              }
+            } catch (error) {
+              if (
+                !settled &&
+                error?.code?.startsWith("EPORTAL_HANDOFF_")
+              ) {
+                finish(rejectHandoff, error);
+              }
             }
           })();
-        }, 1200);
+        }, 2500);
       } catch (error) {
         if (!settled) {
           const launchError = new Error(
