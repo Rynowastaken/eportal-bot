@@ -19,14 +19,7 @@
         </div>
 
         <div class="remote-actions">
-          <label class="bandwidth-control">
-            <span>流量模式</span>
-            <select id="bandwidthSelect">
-              <option value="256">省流量 · 256 kbps</option>
-              <option value="512" selected>平衡 · 512 kbps</option>
-              <option value="1024">較流暢 · 1 Mbps</option>
-            </select>
-          </label>
+          <span class="low-data-badge">128 kbps 省流量模式</span>
           <button id="reloadButton" class="secondary-button" type="button">重新連線</button>
         </div>
       </header>
@@ -85,7 +78,7 @@
       </section>
 
       <footer>
-        <span>預設 512 kbps；靜止畫面通常遠低於上限。</span>
+        <span>固定 128 kbps 低流量上限；靜止畫面通常遠低於上限。</span>
         <span>完成登入後 Remote Login session 會自動關閉。</span>
       </footer>
     </main>
