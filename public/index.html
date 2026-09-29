@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=13" />
+    <link rel="stylesheet" href="/app.css?v=14" />
   </head>
   <body>
     <main class="app-shell">
@@ -61,6 +61,15 @@
               <small id="serverPortalStatusDetail">供卡片 SSO handoff、背景工作與排程使用。</small>
             </div>
           </div>
+
+          <a
+            id="remoteLoginButton"
+            class="session-login focus-ring hidden"
+            href="/remote-login/"
+          >
+            <span>Remote Login 已啟動</span>
+            <span aria-hidden="true">↗</span>
+          </a>
         </div>
       </section>
 
@@ -115,6 +124,6 @@
       </section>
     </dialog>
 
-    <script src="/app.js?v=13" type="module"></script>
+    <script src="/app.js?v=14" type="module"></script>
   </body>
 </html>
