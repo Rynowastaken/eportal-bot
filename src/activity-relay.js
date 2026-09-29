@@ -193,6 +193,10 @@ function requestOnce(
     delete requestHeaders.cookie;
     delete requestHeaders["content-length"];
 
+    if (body?.length) {
+      requestHeaders["Content-Length"] = String(body.length);
+    }
+
     const request = connection.client.request(
       {
         protocol: target.protocol,
@@ -456,6 +460,7 @@ export async function startActivityRelay(handoff) {
   const session = {
     id: crypto.randomBytes(24).toString("base64url"),
     cookies: new Map(),
+    prefetched: null,
     expiresAt: Date.now() + SESSION_TTL_MS,
   };
 
@@ -464,6 +469,10 @@ export async function startActivityRelay(handoff) {
   );
 
   const landing = await followInitialHandoff(session, handoff);
+  session.prefetched = {
+    key: landing.url.toString(),
+    response: landing,
+  };
   session.expiresAt = Date.now() + SESSION_TTL_MS;
   sessions.set(session.id, session);
 
@@ -519,11 +528,21 @@ export async function proxyActivityRelay(req, res, url) {
 
   const target = parseRelayTarget(url.pathname, url.search, sessionId);
   const body = await readRequestBody(req);
-  const response = await requestOnce(session, target, {
-    method: req.method || "GET",
-    body,
-    headers: forwardedHeaders(req, target, sessionId),
-  });
+
+  let response;
+  if (
+    req.method === "GET" &&
+    session.prefetched?.key === target.toString()
+  ) {
+    response = session.prefetched.response;
+    session.prefetched = null;
+  } else {
+    response = await requestOnce(session, target, {
+      method: req.method || "GET",
+      body,
+      headers: forwardedHeaders(req, target, sessionId),
+    });
+  }
 
   if (
     [301, 302, 303, 307, 308].includes(response.status) &&
