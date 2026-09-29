@@ -431,7 +431,18 @@ closeButton.addEventListener("click", async () => {
         throw new Error("Login Bridge did not return a launch path.");
       }
 
-      location.replace(state.launchPath);
+      const launchUrl = new URL(state.launchPath, location.origin);
+      const launchFragment = new URLSearchParams(
+        launchUrl.hash.replace(/^#/, ""),
+      );
+      token = launchFragment.get("token") || "";
+
+      if (!token) {
+        throw new Error("Login Bridge did not return a usable token.");
+      }
+
+      history.replaceState(null, "", "/server-login/");
+      await refresh();
       return;
     }
 
