@@ -3,9 +3,30 @@
 
   const backgroundKey = "nutc-portal-background-v1";
   const paletteKey = "nutc-portal-palette-v1";
+  const colorSchemeKey = "nutc-portal-color-scheme-v1";
+  const colorfulnessKey = "nutc-portal-theme-colorfulness-v1";
+  const brightnessKey = "nutc-portal-theme-brightness-v1";
   const defaults = ["#f0a8c8", "#e8b86d", "#51314a", "#f07178", "#151018"];
+  const defaultSettings = {
+    colorScheme: "tonalSpot",
+    colorfulness: 1,
+    brightness: 1,
+  };
+  const colorSchemes = {
+    content: { name: "Content", chroma: 1, hueOffsets: [0, 0, 0] },
+    expressive: { name: "Expressive", chroma: 1.15, hueOffsets: [0, 75, 35] },
+    fidelity: { name: "Fidelity", chroma: 1.05, hueOffsets: [0, 0, 0] },
+    monochrome: { name: "Monochrome", chroma: 0, hueOffsets: [0, 0, 0] },
+    neutral: { name: "Neutral", chroma: 0.16, hueOffsets: [0, 0, 0], chromaLimit: 0.035 },
+    tonalSpot: { name: "Tonal Spot", chroma: 0.72, hueOffsets: [0, 0, 0], chromaLimit: 0.14 },
+    vibrant: { name: "Vibrant", chroma: 1.5, hueOffsets: [0, 0, 0], chromaFloor: 0.12 },
+    rainbow: { name: "Rainbow", chroma: 1.2, hueOffsets: [0, 110, 220], chromaFloor: 0.1 },
+    fruitSalad: { name: "Fruit Salad", chroma: 1.25, hueOffsets: [-50, 50, 0], chromaFloor: 0.09 },
+  };
+  let currentSourcePalette = [...defaults];
   let currentPalette = [...defaults];
   let currentBackground = "";
+  let currentSettings = { ...defaultSettings };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -176,23 +197,73 @@
     );
   }
 
-  function tonalSpot(source) {
-    const generated = source.map((color, index) => {
+  function normalizeColorScheme(value) {
+    return Object.hasOwn(colorSchemes, value)
+      ? value
+      : defaultSettings.colorScheme;
+  }
+
+  function normalizeThemeFactor(value) {
+    return clamp(Number(value) || 1, 0.5, 1.5);
+  }
+
+  function normalizeSettings(settings = {}) {
+    return {
+      colorScheme: normalizeColorScheme(settings.colorScheme),
+      colorfulness: normalizeThemeFactor(settings.colorfulness),
+      brightness: normalizeThemeFactor(settings.brightness),
+    };
+  }
+
+  function paletteForScheme(
+    source,
+    settings = currentSettings,
+  ) {
+    const normalized = normalizeSettings(settings);
+    const mode = colorSchemes[normalized.colorScheme];
+    const palette =
+      Array.isArray(source) && source.length >= 5 ? source : defaults;
+    const chromaFactor = normalized.colorfulness;
+    const lightnessOffset = (normalized.brightness - 1) * 0.18;
+
+    const generated = palette.map((color, index) => {
       if (index === 3) return color;
+
       const { r, g, b } = hexToRgb(color);
       const lab = rgbToOklab(r, g, b);
-      let chroma = lab.chroma * 0.72;
-      chroma = Math.min(chroma, 0.14);
+      const roleIndex = Math.min(index, 2);
+      const hue =
+        (lab.hue + mode.hueOffsets[roleIndex] + 360) % 360;
+      let chroma = lab.chroma * mode.chroma * chromaFactor;
+
+      if (mode.chromaFloor && lab.chroma >= 0.025) {
+        chroma = Math.max(
+          chroma,
+          mode.chromaFloor * chromaFactor,
+        );
+      }
+
+      if (mode.chromaLimit !== undefined) {
+        chroma = Math.min(
+          chroma,
+          mode.chromaLimit * chromaFactor,
+        );
+      }
+
       if (index === 4) chroma *= 0.55;
 
       return oklchToHex(
-        clamp(lab.lightness, 0.2, 0.94),
+        clamp(lab.lightness + lightnessOffset, 0.2, 0.94),
         chroma,
-        lab.hue,
+        hue,
       );
     });
 
-    generated[0] = ensureColorContrast(generated[0], "#1a141f", 4.5);
+    generated[0] = ensureColorContrast(
+      generated[0],
+      "#1a141f",
+      4.5,
+    );
     generated[1] = ensureColorContrast(generated[1]);
     return generated;
   }
@@ -472,8 +543,13 @@
   }
 
   function applyPalette(source) {
-    currentPalette = tonalSpot(
-      Array.isArray(source) && source.length >= 5 ? source : defaults,
+    currentSourcePalette =
+      Array.isArray(source) && source.length >= 5
+        ? [...source]
+        : [...defaults];
+    currentPalette = paletteForScheme(
+      currentSourcePalette,
+      currentSettings,
     );
 
     const [primary, accent, secondary, danger, neutral] = currentPalette;
@@ -506,9 +582,52 @@
 
     window.dispatchEvent(
       new CustomEvent("nutc-theme-change", {
-        detail: { palette: [...currentPalette] },
+        detail: {
+          palette: [...currentPalette],
+          settings: { ...currentSettings },
+        },
       }),
     );
+  }
+
+  function readThemeSettings() {
+    return normalizeSettings({
+      colorScheme: readStored(
+        colorSchemeKey,
+        defaultSettings.colorScheme,
+      ),
+      colorfulness: readStored(
+        colorfulnessKey,
+        String(defaultSettings.colorfulness),
+      ),
+      brightness: readStored(
+        brightnessKey,
+        String(defaultSettings.brightness),
+      ),
+    });
+  }
+
+  function saveThemeSettings(settings) {
+    store(colorSchemeKey, settings.colorScheme);
+    store(colorfulnessKey, String(settings.colorfulness));
+    store(brightnessKey, String(settings.brightness));
+  }
+
+  function previewSettings(settings) {
+    return paletteForScheme(
+      currentSourcePalette,
+      normalizeSettings(settings),
+    );
+  }
+
+  function applySettings(settings) {
+    currentSettings = normalizeSettings(settings);
+    saveThemeSettings(currentSettings);
+    applyPalette(currentSourcePalette);
+    return {
+      settings: { ...currentSettings },
+      palette: [...currentPalette],
+    };
   }
 
   async function setBackgroundFile(file) {
@@ -547,6 +666,7 @@
 
   async function init() {
     currentBackground = readStored(backgroundKey, "");
+    currentSettings = readThemeSettings();
     let source = defaults;
 
     try {
@@ -572,6 +692,16 @@
     setBackgroundFile,
     clearBackground,
     palette: () => [...currentPalette],
+    sourcePalette: () => [...currentSourcePalette],
+    schemes: () =>
+      Object.entries(colorSchemes).map(([id, scheme]) => ({
+        id,
+        name: scheme.name,
+      })),
+    settings: () => ({ ...currentSettings }),
+    previewSettings,
+    applySettings,
+    defaultSettings: () => ({ ...defaultSettings }),
     hasBackground: () => Boolean(currentBackground),
     rgba: hexToRgba,
   };
