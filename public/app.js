@@ -7,6 +7,9 @@ const serverStatusChevron = document.querySelector("#serverStatusChevron");
 const serverStatusMenu = document.querySelector("#serverStatusMenu");
 const serverLoginAction = document.querySelector("#serverLoginAction");
 const serverLogoutAction = document.querySelector("#serverLogoutAction");
+const settingsMenu = document.querySelector("#settingsMenu");
+const settingsButton = document.querySelector("#settingsButton");
+const settingsPanel = document.querySelector("#settingsPanel");
 const themeSettingsAction = document.querySelector("#themeSettingsAction");
 const backgroundAction = document.querySelector("#backgroundAction");
 const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
@@ -135,7 +138,7 @@ function openThemeDialog() {
   renderThemeSchemes();
   renderThemePreview();
   renderIcons();
-  setServerMenuOpen(false);
+  setSettingsMenuOpen(false);
 
   if (!themeDialog.open) {
     themeDialog.showModal();
@@ -260,28 +263,47 @@ function showLoadError(message) {
   moduleGrid.append(card);
 }
 
+function setFloatingMenuOpen(button, panel, open) {
+  button.setAttribute("aria-expanded", String(open));
+  panel.setAttribute("aria-hidden", String(!open));
+
+  panel.classList.toggle("pointer-events-none", !open);
+  panel.classList.toggle("invisible", !open);
+  panel.classList.toggle("opacity-0", !open);
+  panel.classList.toggle("-translate-y-2", !open);
+  panel.classList.toggle("scale-[.97]", !open);
+
+  panel.classList.toggle("pointer-events-auto", open);
+  panel.classList.toggle("visible", open);
+  panel.classList.toggle("opacity-100", open);
+  panel.classList.toggle("translate-y-0", open);
+  panel.classList.toggle("scale-100", open);
+}
+
 function setServerMenuOpen(open) {
-  serverStatusButton.setAttribute("aria-expanded", String(open));
-  serverStatusMenu.setAttribute("aria-hidden", String(!open));
   serverStatusChevron.classList.toggle("rotate-180", open);
+  setFloatingMenuOpen(serverStatusButton, serverStatusMenu, open);
 
-  serverStatusMenu.classList.toggle("pointer-events-none", !open);
-  serverStatusMenu.classList.toggle("invisible", !open);
-  serverStatusMenu.classList.toggle("opacity-0", !open);
-  serverStatusMenu.classList.toggle("-translate-y-2", !open);
-  serverStatusMenu.classList.toggle("scale-[.97]", !open);
+  if (open) setSettingsMenuOpen(false);
+}
 
-  serverStatusMenu.classList.toggle("pointer-events-auto", open);
-  serverStatusMenu.classList.toggle("visible", open);
-  serverStatusMenu.classList.toggle("opacity-100", open);
-  serverStatusMenu.classList.toggle("translate-y-0", open);
-  serverStatusMenu.classList.toggle("scale-100", open);
+function setSettingsMenuOpen(open) {
+  setFloatingMenuOpen(settingsButton, settingsPanel, open);
+
+  if (open) setServerMenuOpen(false);
 }
 
 serverStatusButton.addEventListener("click", (event) => {
   event.stopPropagation();
   setServerMenuOpen(
     serverStatusButton.getAttribute("aria-expanded") !== "true",
+  );
+});
+
+settingsButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setSettingsMenuOpen(
+    settingsButton.getAttribute("aria-expanded") !== "true",
   );
 });
 
@@ -351,7 +373,7 @@ backgroundInput.addEventListener("change", async () => {
     await window.NutcTheme.setBackgroundFile(file);
     syncThemeMenu();
     renderModules(modulesCache);
-    setServerMenuOpen(false);
+    setSettingsMenuOpen(false);
   } catch (error) {
     console.error("Background update failed:", error);
   } finally {
@@ -363,7 +385,7 @@ clearBackgroundAction.addEventListener("click", () => {
   window.NutcTheme.clearBackground();
   syncThemeMenu();
   renderModules(modulesCache);
-  setServerMenuOpen(false);
+  setSettingsMenuOpen(false);
 });
 
 serverLogoutAction.addEventListener("click", async () => {
@@ -404,12 +426,22 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#serverMenu")) {
     setServerMenuOpen(false);
   }
+
+  if (!event.target.closest("#settingsMenu")) {
+    setSettingsMenuOpen(false);
+  }
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    const settingsWasOpen =
+      settingsButton.getAttribute("aria-expanded") === "true";
+
     setServerMenuOpen(false);
-    serverStatusButton.focus();
+    setSettingsMenuOpen(false);
+
+    if (settingsWasOpen) settingsButton.focus();
+    else serverStatusButton.focus();
   }
 });
 
