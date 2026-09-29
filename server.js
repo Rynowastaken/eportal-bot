@@ -16,6 +16,7 @@ import {
   getLoginBridgeImage,
   getLoginBridgeState,
   getLoginBridgeSummary,
+  shutdownLoginBridge,
   startLoginBridge,
   stopLoginBridge,
 } from "./src/login-bridge.js";
@@ -349,6 +350,9 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       }
+
+      await shutdownLoginBridge();
+      clearActivityRelaySessions();
 
       restartScheduled = true;
       sendJson(res, 202, {
