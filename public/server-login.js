@@ -1,9 +1,7 @@
 const statusDot = document.querySelector("#statusDot");
 const statusTitle = document.querySelector("#statusTitle");
-const statusDetail = document.querySelector("#statusDetail");
 const pageCard = document.querySelector("#pageCard");
 const pageTitle = document.querySelector("#pageTitle");
-const pagePath = document.querySelector("#pagePath");
 const messageList = document.querySelector("#messageList");
 const imageList = document.querySelector("#imageList");
 const fieldList = document.querySelector("#fieldList");
@@ -20,10 +18,9 @@ let busy = false;
 let startupPollTimer = null;
 const objectUrls = new Set();
 
-function setStatus(kind, title, detail) {
+function setStatus(kind, title) {
   statusDot.className = `status-dot ${kind}`;
   statusTitle.textContent = title;
-  statusDetail.textContent = detail;
 }
 
 function authHeaders(extra = {}) {
@@ -215,11 +212,7 @@ function render(state) {
     pageCard.classList.add("hidden");
     errorCard.classList.add("hidden");
     doneCard.classList.remove("hidden");
-    setStatus(
-      "valid",
-      "Server ePortal 登入完成",
-      "Persistent profile 已更新；不再需要這個登入頁。",
-    );
+    setStatus("valid", "登入完成");
     disposeImages();
     return;
   }
@@ -230,24 +223,15 @@ function render(state) {
     errorCard.classList.add("hidden");
 
     const phaseText = {
-      starting: ["正在啟動 Login Bridge", "Server 正在準備 headless Chromium…"],
-      "checking-session": [
-        "正在檢查 Server ePortal session",
-        "Server Chromium 正在開啟 ePortal，確認是否真的需要重新登入…",
-      ],
-      "opening-login": [
-        "正在開啟 ePortal 登入頁",
-        "已確認需要登入，正在準備原生表單控制項…",
-      ],
+      starting: "準備登入…",
+      "checking-session": "檢查登入狀態…",
+      "opening-login": "載入登入頁…",
     };
 
-    const [title, detail] =
-      phaseText[state.phase] || [
-        "正在準備登入頁",
-        "等待 Server 上的 ePortal 頁面可供操作…",
-      ];
-
-    setStatus("checking", title, detail);
+    setStatus(
+      "checking",
+      phaseText[state.phase] || "準備登入…",
+    );
 
     startupPollTimer = setTimeout(() => {
       void refresh();
@@ -264,7 +248,6 @@ function render(state) {
   pageCard.classList.remove("hidden");
 
   pageTitle.textContent = state.page.title || "ePortal";
-  pagePath.textContent = `${state.page.hostname}${state.page.path}`;
 
   messageList.replaceChildren();
   for (const message of state.page.messages || []) {
@@ -309,11 +292,7 @@ function render(state) {
 
   void loadImages(state.page.images || []);
 
-  setStatus(
-    "valid",
-    "已連接 Server 上的 ePortal 頁面",
-    "這裡是本機瀏覽器原生表單；提交後由 Server Playwright 操作真實頁面。",
-  );
+  setStatus("valid", "請完成登入");
 
   const firstEditable = fieldList.querySelector(
     'input:not([type="checkbox"]):not([type="radio"]), select, textarea',
@@ -337,7 +316,7 @@ async function submitAction(activate = null, pressEnter = false) {
     button.disabled = true;
   }
 
-  setStatus("checking", "正在提交", "等待 ePortal 回應…");
+  setStatus("checking", "正在提交…");
 
   try {
     const state = await bridgeApi("/api/login-bridge/action", {
@@ -368,7 +347,7 @@ function showError(message) {
   doneCard.classList.add("hidden");
   errorCard.classList.remove("hidden");
   errorMessage.textContent = message;
-  setStatus("invalid", "登入橋接停止", message);
+  setStatus("invalid", "登入失敗");
   disposeImages();
 }
 
@@ -404,7 +383,7 @@ closeButton.addEventListener("click", async () => {
 
   try {
     if (!token) {
-      setStatus("checking", "正在啟動 Login Bridge", "Server 正在開啟 headless ePortal 登入頁…");
+      setStatus("checking", "準備登入…");
 
       const response = await fetch("/api/login-bridge/start", {
         method: "POST",
