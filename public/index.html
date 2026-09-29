@@ -45,7 +45,8 @@
           </div>
         </div>
 
-        <div id="serverMenu" class="relative z-50 shrink-0">
+        <div class="flex shrink-0 items-center gap-2">
+          <div id="serverMenu" class="relative z-50">
           <button
             id="serverStatusButton"
             class="focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)]"
@@ -86,36 +87,6 @@
               </button>
 
               <button
-                id="themeSettingsAction"
-                class="focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] flex min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10]"
-                type="button"
-                role="menuitem"
-              >
-                <i data-lucide="palette" class="h-5 w-5 text-[var(--primary)]"></i>
-                <span>Color scheme</span>
-              </button>
-
-              <button
-                id="backgroundAction"
-                class="focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] flex min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10]"
-                type="button"
-                role="menuitem"
-              >
-                <i data-lucide="image-up" class="h-5 w-5 text-[var(--primary)]"></i>
-                <span>背景圖片</span>
-              </button>
-
-              <button
-                id="clearBackgroundAction"
-                class="focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] hidden min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10]"
-                type="button"
-                role="menuitem"
-              >
-                <i data-lucide="image-minus" class="h-5 w-5 text-[var(--primary)]"></i>
-                <span>移除背景</span>
-              </button>
-
-              <button
                 id="serverLogoutAction"
                 class="focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] hidden min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-[#f07178]/20 bg-[#f07178]/[.07] px-3 text-left text-sm font-semibold text-[#f4a0a5] transition duration-150 hover:-translate-y-px hover:border-[#f07178]/30 hover:bg-[#f07178]/[.11]"
                 type="button"
@@ -127,13 +98,68 @@
             </div>
           </div>
 
-          <input
-            id="backgroundInput"
-            class="sr-only"
-            type="file"
-            accept="image/*"
-            tabindex="-1"
-          />
+          </div>
+
+          <div id="settingsMenu" class="relative z-50">
+            <button
+              id="settingsButton"
+              class="grid h-[42px] w-[42px] place-items-center rounded-xl border border-white/[.12] bg-white/[.07] text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              type="button"
+              aria-label="外觀設定"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <i data-lucide="settings-2" class="h-5 w-5"></i>
+            </button>
+
+            <div
+              id="settingsPanel"
+              class="pointer-events-none invisible absolute right-0 top-[calc(100%+.65rem)] w-56 origin-top-right -translate-y-2 scale-[.97] rounded-[20px] border border-white/[.12] bg-[rgba(14,12,16,.92)] p-2 opacity-0 shadow-[0_16px_42px_rgba(0,0,0,.38)] backdrop-blur-[22px] backdrop-saturate-[170%] transition duration-200 ease-soft-out"
+              role="menu"
+              aria-label="外觀設定"
+              aria-hidden="true"
+            >
+              <div class="grid gap-2">
+                <button
+                  id="themeSettingsAction"
+                  class="flex min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+                  type="button"
+                  role="menuitem"
+                >
+                  <i data-lucide="palette" class="h-5 w-5 text-[var(--primary)]"></i>
+                  <span>Color scheme</span>
+                </button>
+
+                <button
+                  id="backgroundAction"
+                  class="flex min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+                  type="button"
+                  role="menuitem"
+                >
+                  <i data-lucide="image-up" class="h-5 w-5 text-[var(--primary)]"></i>
+                  <span>背景圖片</span>
+                </button>
+
+                <button
+                  id="clearBackgroundAction"
+                  class="hidden min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+                  type="button"
+                  role="menuitem"
+                >
+                  <i data-lucide="image-minus" class="h-5 w-5 text-[var(--primary)]"></i>
+                  <span>移除背景</span>
+                </button>
+              </div>
+            </div>
+
+            <input
+              id="backgroundInput"
+              class="sr-only"
+              type="file"
+              accept="image/*"
+              tabindex="-1"
+            />
+          </div>
         </div>
       </header>
 
@@ -265,6 +291,6 @@
     </dialog>
 
     <script src="/theme.js?v=3"></script>
-    <script src="/app.js?v=23" type="module"></script>
+    <script src="/app.js?v=24" type="module"></script>
   </body>
 </html>
