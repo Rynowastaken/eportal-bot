@@ -10,7 +10,6 @@ const serverLogoutAction = document.querySelector("#serverLogoutAction");
 const backgroundAction = document.querySelector("#backgroundAction");
 const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
 const backgroundInput = document.querySelector("#backgroundInput");
-const themeSwatches = document.querySelector("#themeSwatches");
 
 let modulesCache = [];
 
@@ -35,18 +34,7 @@ function renderIcons() {
   }
 }
 
-function renderThemeSwatches() {
-  const palette = window.NutcTheme?.palette?.() || [];
-  themeSwatches.replaceChildren();
-
-  for (const color of palette.slice(0, 3)) {
-    const dot = document.createElement("span");
-    dot.className =
-      "h-2.5 w-2.5 rounded-full border border-white/15 shadow-sm";
-    dot.style.backgroundColor = color;
-    themeSwatches.append(dot);
-  }
-
+function syncThemeMenu() {
   const showClearBackground = Boolean(
     window.NutcTheme?.hasBackground?.(),
   );
@@ -209,7 +197,7 @@ backgroundInput.addEventListener("change", async () => {
 
   try {
     await window.NutcTheme.setBackgroundFile(file);
-    renderThemeSwatches();
+    syncThemeMenu();
     renderModules(modulesCache);
     setServerMenuOpen(false);
   } catch (error) {
@@ -221,7 +209,7 @@ backgroundInput.addEventListener("change", async () => {
 
 clearBackgroundAction.addEventListener("click", () => {
   window.NutcTheme.clearBackground();
-  renderThemeSwatches();
+  syncThemeMenu();
   renderModules(modulesCache);
   setServerMenuOpen(false);
 });
@@ -274,13 +262,13 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("nutc-theme-change", () => {
-  renderThemeSwatches();
+  syncThemeMenu();
   if (modulesCache.length) renderModules(modulesCache);
 });
 
 (async () => {
   await window.NutcTheme.init();
-  renderThemeSwatches();
+  syncThemeMenu();
   renderIcons();
 
   const results = await Promise.allSettled([
