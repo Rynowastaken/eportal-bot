@@ -2159,8 +2159,11 @@ export async function openLoginBridgeSession({ timeoutMs = 5_000 } = {}) {
   }
 }
 
-export async function openAisWithServerSession({ headless = true } = {}) {
-  const release = await acquireProfileAccess({ timeoutMs: 30_000 });
+export async function openAisWithServerSession({
+  headless = true,
+  timeoutMs = 30_000,
+} = {}) {
+  const release = await acquireProfileAccess({ timeoutMs });
   let context;
 
   try {
