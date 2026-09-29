@@ -6,7 +6,6 @@ const tokenForm = document.querySelector("#tokenForm");
 const tokenInput = document.querySelector("#tokenInput");
 const viewerPlaceholder = document.querySelector("#viewerPlaceholder");
 const xpraFrame = document.querySelector("#xpraFrame");
-const bandwidthSelect = document.querySelector("#bandwidthSelect");
 const reloadButton = document.querySelector("#reloadButton");
 
 let currentStatus = null;
@@ -52,7 +51,7 @@ async function authorize(token) {
 }
 
 function frameUrl() {
-  const kbps = Number(bandwidthSelect.value || currentStatus?.bandwidthKbps || 512);
+  const kbps = Number(currentStatus?.bandwidthKbps || 128);
   const bps = Math.max(128, kbps) * 1000;
   const params = new URLSearchParams({
     bandwidth_limit: String(bps),
@@ -96,7 +95,6 @@ function renderStatus(status) {
     xpraFrame.classList.add("hidden");
     viewerPlaceholder.classList.remove("hidden");
     tokenPanel.classList.remove("hidden");
-    bandwidthSelect.value = String(status.bandwidthKbps || 512);
     setStatus(
       "checking",
       "Remote Login 已啟動",
@@ -106,7 +104,6 @@ function renderStatus(status) {
   }
 
   tokenPanel.classList.add("hidden");
-  bandwidthSelect.value = String(status.bandwidthKbps || bandwidthSelect.value || 512);
   setStatus(
     "valid",
     "Remote Login 已連線",
@@ -154,10 +151,6 @@ tokenForm.addEventListener("submit", async (event) => {
   } catch (error) {
     setStatus("invalid", "Token 驗證失敗", error.message);
   }
-});
-
-bandwidthSelect.addEventListener("change", () => {
-  if (currentStatus?.authorized) startFrame(true);
 });
 
 reloadButton.addEventListener("click", async () => {
