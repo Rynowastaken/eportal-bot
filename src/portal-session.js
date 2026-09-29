@@ -145,6 +145,15 @@ async function withProfileLock(task, options = {}) {
   }
 }
 
+function safeUrlLabel(raw) {
+  try {
+    const url = new URL(raw);
+    return `${url.hostname}${url.pathname}`;
+  } catch {
+    return "invalid-url";
+  }
+}
+
 async function profileExists() {
   try {
     const stat = await fs.stat(EPORTAL_PROFILE_DIR);
@@ -390,6 +399,45 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       }
 
       const eportalOrigin = new URL(EPORTAL_HOME).origin;
+      const observed = {
+        pages: new Set(),
+        navigations: new Set(),
+        responses: new Set(),
+      };
+
+      const observePage = (page) => {
+        observed.pages.add(safeUrlLabel(page.url()));
+
+        page.on("framenavigated", (frame) => {
+          if (frame !== page.mainFrame()) return;
+          observed.navigations.add(safeUrlLabel(frame.url()));
+        });
+
+        page.on("close", () => {
+          observed.pages.add("closed");
+        });
+      };
+
+      for (const existingPage of context.pages()) observePage(existingPage);
+      context.on("page", (page) => {
+        observePage(page);
+        console.log(
+          `[handoff] popup opened for ${module.id}: ${safeUrlLabel(page.url())}`,
+        );
+      });
+
+      context.on("response", (response) => {
+        const request = response.request();
+        if (!request.isNavigationRequest()) return;
+
+        const label = `${response.status()} ${safeUrlLabel(response.url())}`;
+        observed.responses.add(label);
+
+        if (new URL(response.url()).origin === eportalOrigin) {
+          console.log(`[handoff] internal navigation for ${module.id}: ${label}`);
+        }
+      });
+
       let settled = false;
       let timeoutId;
 
@@ -402,6 +450,16 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
             "Timed out waiting for ePortal to generate an external SSO handoff.",
           );
           error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+          error.diagnostics = {
+            pages: [...observed.pages].slice(-8),
+            navigations: [...observed.navigations].slice(-8),
+            responses: [...observed.responses].slice(-8),
+          };
+
+          console.log(
+            `[handoff] timeout for ${module.id}; pages=${error.diagnostics.pages.join(",") || "none"}; nav=${error.diagnostics.navigations.join(",") || "none"}; responses=${error.diagnostics.responses.join(",") || "none"}`,
+          );
+
           reject(error);
         }, timeout);
       });
@@ -482,6 +540,68 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
       try {
         await button.click({ timeout: 10_000 });
+
+        setTimeout(() => {
+          void (async () => {
+            if (settled) return;
+
+            for (const page of context.pages()) {
+              try {
+                const current = new URL(page.url());
+                if (current.origin !== eportalOrigin) continue;
+
+                const summary = await page.evaluate(() => {
+                  const externalish = (value) => {
+                    if (!value) return null;
+                    try {
+                      const url = new URL(value, location.href);
+                      return url.origin === location.origin
+                        ? null
+                        : { host: url.hostname, path: url.pathname };
+                    } catch {
+                      return null;
+                    }
+                  };
+
+                  const forms = [...document.forms]
+                    .map((form) => ({
+                      method: String(form.method || "GET").toUpperCase(),
+                      target: externalish(form.action),
+                    }))
+                    .filter((entry) => entry.target)
+                    .slice(0, 4);
+
+                  const links = [...document.querySelectorAll("a[href]")]
+                    .map((anchor) => externalish(anchor.href))
+                    .filter(Boolean)
+                    .slice(0, 4);
+
+                  const meta = document.querySelector(
+                    'meta[http-equiv="refresh" i]',
+                  );
+                  const refresh = meta?.content || "";
+
+                  return {
+                    title: document.title.slice(0, 120),
+                    forms,
+                    links,
+                    refresh: refresh.slice(0, 200),
+                    bodyText: document.body?.innerText
+                      ?.replace(/\s+/g, " ")
+                      .trim()
+                      .slice(0, 180) || "",
+                  };
+                });
+
+                console.log(
+                  `[handoff] inspect ${module.id}: ${safeUrlLabel(page.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms)}; links=${JSON.stringify(summary.links)}; refresh=${JSON.stringify(summary.refresh)}; text=${JSON.stringify(summary.bodyText)}`,
+                );
+              } catch {
+                // Page may close while being inspected.
+              }
+            }
+          })();
+        }, 2000);
       } catch (error) {
         if (!settled) {
           const clickError = new Error(
