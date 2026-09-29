@@ -101,7 +101,9 @@ Everything else stays behind the normal Allow policy.
 
 A Cloudflare Tunnel is **not required**. The bundled no-tunnel deployment keeps Node on
 `127.0.0.1:4174`, puts Caddy on public HTTPS/443, and uses a proxied Cloudflare DNS
-record. Ready-to-edit files are in `deploy/no-tunnel/`. See
+record. Run `npm run deploy:configure` for an interactive wizard that generates the
+environment, Caddy, and systemd files under `.deploy/`. Ready-to-edit templates remain
+in `deploy/no-tunnel/`. See
 [docs/cloudflare-access.md](docs/cloudflare-access.md) for the complete setup.
 
 ## Start Dashboard
