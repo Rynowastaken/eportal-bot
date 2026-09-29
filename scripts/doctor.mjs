@@ -31,6 +31,9 @@ const required = [
   "public/vendor/tailwindcss-3.4.17.js",
   "public/vendor/lucide-1.24.0.min.js",
   "public/userscript/nutc-portal.user.js",
+  "deploy/no-tunnel/Caddyfile.example",
+  "deploy/no-tunnel/eportal.env.example",
+  "deploy/no-tunnel/eportal-bot.service.example",
 ];
 
 const major = Number(process.versions.node.split(".")[0]);
