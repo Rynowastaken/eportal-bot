@@ -1,13 +1,13 @@
 {
   "name": "eportal-bot",
-  "version": "4.5.0",
+  "version": "4.6.0",
   "private": true,
   "type": "module",
   "description": "Cloudflare Access protected NUTC dashboard with independent server-side ePortal Playwright session.",
   "scripts": {
     "start": "node server.js",
     "doctor": "node scripts/doctor.mjs",
-    "check": "node --check server.js && node --check scripts/doctor.mjs && node --check scripts/portal-login.mjs && node --check scripts/portal-status.mjs && node --check scripts/portal-run.mjs && node --check src/eportal.js && node --check src/portal-session.js && node --check src/preference-store.js && node --check public/app.js && node --check public/student.js && node --check public/module.js && node --check public/userscript/nutc-portal.user.js",
+    "check": "node --check server.js && node --check scripts/doctor.mjs && node --check scripts/portal-login.mjs && node --check scripts/portal-status.mjs && node --check scripts/portal-run.mjs && node --check src/eportal.js && node --check src/portal-session.js && node --check src/preference-store.js && node --check public/app.js && node --check public/userscript/nutc-portal.user.js",
     "login": "node scripts/portal-login.mjs",
     "portal:status": "node scripts/portal-status.mjs",
     "run": "node scripts/portal-run.mjs"
