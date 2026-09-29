@@ -13,10 +13,12 @@ const required = [
   "src/portal-session.js",
   "src/login-bridge.js",
   "src/dashboard-preferences.js",
+  "src/cloudflare-access.js",
   "scripts/portal-login.mjs",
   "scripts/portal-status.mjs",
   "scripts/portal-run.mjs",
   "public/index.html",
+  "public/access-login.html",
   "public/server-login.html",
   "public/server-login.js",
   "public/app.js",
@@ -58,6 +60,34 @@ console.log(
   `  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "10 (default)"}`,
 );
 console.log("  client convenience detection: userscript bridge");
+
+const accessEnforced = /^(1|true|yes)$/i.test(
+  String(process.env.CLOUDFLARE_ACCESS_ENFORCE || ""),
+);
+const accessTeamDomain = String(
+  process.env.CLOUDFLARE_ACCESS_TEAM_DOMAIN || "",
+).trim();
+const accessAud = String(
+  process.env.CLOUDFLARE_ACCESS_AUD || "",
+).trim();
+
+console.log(
+  `  cloudflare access origin validation: ${accessEnforced ? "enforced" : "disabled"}`,
+);
+
+if (accessEnforced) {
+  if (!accessTeamDomain) {
+    errors.push(
+      "CLOUDFLARE_ACCESS_TEAM_DOMAIN is required when CLOUDFLARE_ACCESS_ENFORCE=1.",
+    );
+  }
+
+  if (!accessAud) {
+    errors.push(
+      "CLOUDFLARE_ACCESS_AUD is required when CLOUDFLARE_ACCESS_ENFORCE=1.",
+    );
+  }
+}
 
 if (!errors.length) {
   let browser;
