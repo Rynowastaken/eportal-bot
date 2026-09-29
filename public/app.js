@@ -91,7 +91,7 @@ function setServerPortalStatus(status) {
   if (status?.status === "valid") {
     serverPortalStatusTitle.textContent = "Server 背景 ePortal 已登入";
     serverPortalStatusDetail.textContent =
-      "供 Dashboard 模組頁面、背景工作與排程使用；不會把 school cookies 傳給目前瀏覽器。";
+      "供 SSO handoff、背景工作與排程使用；school cookies 仍只留在 Server profile。";
     return;
   }
 
@@ -282,16 +282,6 @@ function consumeMobileReturn() {
 }
 
 function openModule(module) {
-  // Module cards always use the CURRENT BROWSER'S ePortal cookie jar.
-  // The server Playwright profile is intentionally isolated and cannot be
-  // transferred into an incognito/guest browser by redirecting it.
-  if (!module.serverBacked && authState !== "valid") {
-    showDialog(
-      "這張卡片使用目前瀏覽器的 ePortal session",
-      "Server 背景 session 不會自動登入這個瀏覽器。Incognito / 訪客模式有獨立 cookie，所以如果這個瀏覽器尚未登入 ePortal，官方頁面會要求你登入。",
-    );
-  }
-
   const opened = window.open(module.launchPath, "_blank", "noopener");
 
   if (!opened) {
@@ -328,11 +318,9 @@ function renderModules(modules) {
     const launch = document.createElement("span");
     launch.className = "module-launch";
     launch.innerHTML =
-      module.serverBacked
-        ? `<span>由 Server session 載入，可在 Incognito 使用</span><span aria-hidden="true">↗</span>`
-        : authState === "valid"
-          ? `<span>使用此瀏覽器的 ePortal session</span><span aria-hidden="true">↗</span>`
-          : `<span>此瀏覽器可能需要先登入 ePortal</span><span aria-hidden="true">↗</span>`;
+      module.serverHandoff
+        ? `<span>由 Server 產生短效 SSO handoff</span><span aria-hidden="true">↗</span>`
+        : `<span>開啟系統</span><span aria-hidden="true">↗</span>`;
 
     copy.append(title, description, launch);
     button.append(icon, copy);
