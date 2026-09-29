@@ -938,6 +938,160 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       const launcher = await context.newPage();
       notePage(launcher);
 
+      let cdp = null;
+
+      if (module.path.startsWith("/ext_module/")) {
+        cdp = await context.newCDPSession(launcher);
+
+        cdp.on("Fetch.requestPaused", (event) => {
+          void (async () => {
+            const request = event.request || {};
+            let target;
+
+            try {
+              target = new URL(String(request.url || ""));
+            } catch {
+              await cdp
+                .send("Fetch.continueRequest", {
+                  requestId: event.requestId,
+                })
+                .catch(() => {});
+              return;
+            }
+
+            if (target.origin === eportalOrigin) {
+              await cdp
+                .send("Fetch.continueRequest", {
+                  requestId: event.requestId,
+                })
+                .catch(() => {});
+              return;
+            }
+
+            const handoffUrl = normalizeExternalHandoffUrl(
+              target,
+              eportalOrigin,
+            );
+
+            if (!handoffUrl) {
+              await cdp
+                .send("Fetch.failRequest", {
+                  requestId: event.requestId,
+                  errorReason: "Aborted",
+                })
+                .catch(() => {});
+
+              if (!settled) {
+                const error = new Error(
+                  "Refusing a non-HTTPS external ePortal handoff outside NUTC domains.",
+                );
+                error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+                finish(rejectHandoff, error);
+              }
+              return;
+            }
+
+            const method = String(request.method || "GET").toUpperCase();
+            let result;
+
+            if (method === "GET") {
+              result = {
+                type: "get",
+                url: handoffUrl.toString(),
+              };
+            } else if (method === "POST") {
+              const headers = request.headers || {};
+              const contentTypeEntry = Object.entries(headers).find(
+                ([name]) => name.toLowerCase() === "content-type",
+              );
+              const contentType = String(contentTypeEntry?.[1] || "")
+                .split(";")[0]
+                .trim()
+                .toLowerCase();
+
+              if (
+                contentType !== "application/x-www-form-urlencoded" &&
+                contentType !== "multipart/form-data"
+              ) {
+                await cdp
+                  .send("Fetch.failRequest", {
+                    requestId: event.requestId,
+                    errorReason: "Aborted",
+                  })
+                  .catch(() => {});
+
+                const error = new Error(
+                  `ePortal generated an external POST handoff using unsupported content type ${contentType || "unknown"}.`,
+                );
+                error.code = "EPORTAL_HANDOFF_POST_UNSUPPORTED";
+                finish(rejectHandoff, error);
+                return;
+              }
+
+              if (contentType === "multipart/form-data") {
+                await cdp
+                  .send("Fetch.failRequest", {
+                    requestId: event.requestId,
+                    errorReason: "Aborted",
+                  })
+                  .catch(() => {});
+
+                const error = new Error(
+                  "ePortal generated a multipart POST handoff that cannot be safely reconstructed from Chromium request data.",
+                );
+                error.code = "EPORTAL_HANDOFF_POST_UNSUPPORTED";
+                finish(rejectHandoff, error);
+                return;
+              }
+
+              const params = new URLSearchParams(request.postData || "");
+              result = {
+                type: "post",
+                url: handoffUrl.toString(),
+                fields: [...params.entries()],
+                enctype: "application/x-www-form-urlencoded",
+              };
+            } else {
+              await cdp
+                .send("Fetch.failRequest", {
+                  requestId: event.requestId,
+                  errorReason: "Aborted",
+                })
+                .catch(() => {});
+
+              const error = new Error(
+                `ePortal generated an unsupported external ${method} handoff.`,
+              );
+              error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+              finish(rejectHandoff, error);
+              return;
+            }
+
+            await cdp
+              .send("Fetch.failRequest", {
+                requestId: event.requestId,
+                errorReason: "Aborted",
+              })
+              .catch(() => {});
+
+            console.log(
+              `[handoff] captured preflight document for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
+            );
+            finish(resolveHandoff, result);
+          })();
+        });
+
+        await cdp.send("Fetch.enable", {
+          patterns: [
+            {
+              urlPattern: "*",
+              resourceType: "Document",
+              requestStage: "Request",
+            },
+          ],
+        });
+      }
+
       try {
         await launcher.goto(moduleUrl(module.id), {
           waitUntil: "commit",
