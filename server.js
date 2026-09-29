@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -32,7 +33,10 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
+const serverInstanceId =
+  crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex");
 const serverStartedAt = Date.now();
+let restartScheduled = false;
 const preferenceStore = new PreferenceStore();
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
 const loginBridgeTtlMinutes = Number(
@@ -238,6 +242,60 @@ function handleBridgeError(res, error) {
   return false;
 }
 
+function restartServerProcess() {
+  const restartMode = String(
+    process.env.EPORTAL_RESTART_MODE || "self",
+  )
+    .trim()
+    .toLowerCase();
+
+  let finished = false;
+
+  function finishRestart() {
+    if (finished) return;
+    finished = true;
+
+    if (restartMode === "exit") {
+      process.exit(0);
+      return;
+    }
+
+    try {
+      const child = spawn(
+        process.execPath,
+        process.argv.slice(1),
+        {
+          cwd: __dirname,
+          env: process.env,
+          detached: true,
+          stdio: "inherit",
+        },
+      );
+
+      child.unref();
+      setTimeout(() => process.exit(0), 60).unref();
+    } catch (error) {
+      restartScheduled = false;
+      console.error("Could not restart NUTC Portal server:", error);
+
+      if (!server.listening) {
+        server.listen(port, host);
+      }
+    }
+  }
+
+  console.log("[debug] server restart requested");
+
+  server.close(finishRestart);
+  server.closeIdleConnections?.();
+
+  setTimeout(() => {
+    server.closeAllConnections?.();
+  }, 1200).unref();
+
+  setTimeout(finishRestart, 2500).unref();
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(
     req.url || "/",
@@ -270,12 +328,37 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/server/status") {
       sendJson(res, 200, {
+        instanceId: serverInstanceId,
         startedAt: serverStartedAt,
+        restartScheduled,
         platform: process.platform,
         arch: process.arch,
         authMode: "cloudflare-access",
         eportalSessionMode: "server-playwright-and-client-browser",
         eportalOrigin: EPORTAL_ORIGIN,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/debug/restart") {
+      if (restartScheduled) {
+        sendJson(res, 202, {
+          ok: true,
+          restarting: true,
+          instanceId: serverInstanceId,
+        });
+        return;
+      }
+
+      restartScheduled = true;
+      sendJson(res, 202, {
+        ok: true,
+        restarting: true,
+        instanceId: serverInstanceId,
+      });
+
+      res.once("finish", () => {
+        setTimeout(restartServerProcess, 120).unref();
       });
       return;
     }
