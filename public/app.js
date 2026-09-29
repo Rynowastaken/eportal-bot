@@ -1,15 +1,13 @@
 const moduleGrid = document.querySelector("#moduleGrid");
 const serverMenu = document.querySelector("#serverMenu");
 const serverStatusButton = document.querySelector("#serverStatusButton");
+const serverStatusIcon = document.querySelector("#serverStatusIcon");
 const serverStatusText = document.querySelector("#serverStatusText");
 const serverStatusChevron = document.querySelector("#serverStatusChevron");
 const serverStatusMenu = document.querySelector("#serverStatusMenu");
 const serverLoginAction = document.querySelector("#serverLoginAction");
 const serverLogoutAction = document.querySelector("#serverLogoutAction");
-const settingsMenu = document.querySelector("#settingsMenu");
 const settingsButton = document.querySelector("#settingsButton");
-const settingsPanel = document.querySelector("#settingsPanel");
-const themeSettingsAction = document.querySelector("#themeSettingsAction");
 const backgroundAction = document.querySelector("#backgroundAction");
 const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
 const backgroundInput = document.querySelector("#backgroundInput");
@@ -137,7 +135,7 @@ function openThemeDialog() {
   renderThemeSchemes();
   renderThemePreview();
   renderIcons();
-  setSettingsMenuOpen(false);
+  setServerMenuOpen(false);
 
   if (!themeDialog.open) {
     themeDialog.showModal();
@@ -149,26 +147,46 @@ function closeThemeDialog() {
   stagedThemeSettings = null;
 }
 
+function setStatusIcon(kind) {
+  const icons = {
+    valid:
+      '<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.8 12.2 2.1 2.1 4.5-4.7"></path></svg>',
+    busy:
+      '<svg viewBox="0 0 24 24" class="h-4 w-4 animate-spin" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path></svg>',
+    error:
+      '<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 8v5"></path><path d="M12 16.5h.01"></path></svg>',
+    login:
+      '<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5"></path><path d="M15 12H4"></path><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"></path></svg>',
+  };
+
+  serverStatusIcon.innerHTML = icons[kind] || icons.login;
+}
+
 function setServerStatus(status) {
   const state = status?.status || "error";
   const bridgeActive = Boolean(status?.loginBridge?.active);
 
   let label = "需登入";
   let detail = "Server ePortal 尚未登入";
+  let iconKind = "login";
   let canLogout = false;
 
   if (bridgeActive || state === "busy") {
     label = "使用中";
     detail = "Server ePortal 正在使用中";
+    iconKind = "busy";
   } else if (state === "valid") {
     label = "已連線";
     detail = "Server ePortal 已登入";
+    iconKind = "valid";
     canLogout = true;
   } else if (state === "error") {
     label = "重試";
     detail = status?.error || "無法檢查 Server ePortal";
+    iconKind = "error";
   }
 
+  setStatusIcon(iconKind);
   serverStatusText.textContent = label;
   serverStatusButton.title = detail;
   serverStatusButton.setAttribute("aria-label", detail);
@@ -278,14 +296,6 @@ function setFloatingMenuOpen(button, panel, open) {
 function setServerMenuOpen(open) {
   serverStatusChevron.classList.toggle("rotate-180", open);
   setFloatingMenuOpen(serverStatusButton, serverStatusMenu, open);
-
-  if (open) setSettingsMenuOpen(false);
-}
-
-function setSettingsMenuOpen(open) {
-  setFloatingMenuOpen(settingsButton, settingsPanel, open);
-
-  if (open) setServerMenuOpen(false);
 }
 
 serverStatusButton.addEventListener("click", (event) => {
@@ -295,19 +305,12 @@ serverStatusButton.addEventListener("click", (event) => {
   );
 });
 
-settingsButton.addEventListener("click", (event) => {
-  event.stopPropagation();
-  setSettingsMenuOpen(
-    settingsButton.getAttribute("aria-expanded") !== "true",
-  );
+settingsButton.addEventListener("click", () => {
+  openThemeDialog();
 });
 
 serverLoginAction.addEventListener("click", () => {
   window.location.assign("/server-login/");
-});
-
-themeSettingsAction.addEventListener("click", () => {
-  openThemeDialog();
 });
 
 themeDialogClose.addEventListener("click", () => {
@@ -368,7 +371,6 @@ backgroundInput.addEventListener("change", async () => {
     await window.NutcTheme.setBackgroundFile(file);
     syncThemeMenu();
     renderModules(modulesCache);
-    setSettingsMenuOpen(false);
   } catch (error) {
     console.error("Background update failed:", error);
   } finally {
@@ -380,7 +382,6 @@ clearBackgroundAction.addEventListener("click", () => {
   window.NutcTheme.clearBackground();
   syncThemeMenu();
   renderModules(modulesCache);
-  setSettingsMenuOpen(false);
 });
 
 serverLogoutAction.addEventListener("click", async () => {
@@ -423,7 +424,6 @@ document.addEventListener("click", (event) => {
   }
 
   if (!event.target.closest("#settingsMenu")) {
-    setSettingsMenuOpen(false);
   }
 });
 
@@ -433,7 +433,6 @@ document.addEventListener("keydown", (event) => {
       settingsButton.getAttribute("aria-expanded") === "true";
 
     setServerMenuOpen(false);
-    setSettingsMenuOpen(false);
 
     if (settingsWasOpen) settingsButton.focus();
     else serverStatusButton.focus();
