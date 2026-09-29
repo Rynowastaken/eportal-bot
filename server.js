@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, publicModules } from "./src/eportal.js";
 import {
+  clearActivityRelaySessions,
   proxyActivityRelay,
   startActivityRelay,
 } from "./src/activity-relay.js";
@@ -22,6 +23,7 @@ import {
   checkServerPortalStatus,
   createModuleHandoff,
   getPortalKeepaliveState,
+  logoutServerPortalSession,
   startPortalKeepalive,
 } from "./src/portal-session.js";
 
@@ -285,6 +287,27 @@ const server = http.createServer(async (req, res) => {
         keepalive: getPortalKeepaliveState(),
         loginBridge: getLoginBridgeSummary(),
       });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/portal-logout") {
+      try {
+        const result = await logoutServerPortalSession();
+        clearActivityRelaySessions();
+        sendJson(res, 200, result);
+      } catch (error) {
+        if (error?.code === "EPORTAL_PROFILE_BUSY") {
+          sendError(
+            res,
+            409,
+            "Server ePortal is busy. Try again after the current operation finishes.",
+            error.code,
+          );
+          return;
+        }
+
+        throw error;
+      }
       return;
     }
 
