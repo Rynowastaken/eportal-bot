@@ -5,8 +5,7 @@ const moduleLoadingPortal = document.querySelector("#moduleLoadingPortal");
 const moduleLoadingDetail = document.querySelector("#moduleLoadingDetail");
 const moduleLoadingElapsed = document.querySelector("#moduleLoadingElapsed");
 const classScheduleCard = document.querySelector("#classScheduleCard");
-const scheduleDayTabs = document.querySelector("#scheduleDayTabs");
-const scheduleContent = document.querySelector("#scheduleContent");
+const scheduleGrid = document.querySelector("#scheduleGrid");
 const scheduleMeta = document.querySelector("#scheduleMeta");
 const scheduleRefreshButton = document.querySelector("#scheduleRefreshButton");
 const portalBackdrop = document.querySelector("#portalBackdrop");
@@ -74,7 +73,6 @@ let initialModulesAnimated = false;
 let statusPointerInside = false;
 let statusFocusInside = false;
 let classScheduleData = null;
-let selectedScheduleDay = 0;
 
 const accountNameKey = "nutc-portal-account-name-v1";
 const accountAvatarKey = "nutc-portal-account-avatar-v1";
@@ -683,12 +681,26 @@ function setServerStatus(status) {
   serverLogoutAction.classList.toggle("flex", canLogout);
 }
 
-function taipeiDayIndex() {
-  const weekday = new Intl.DateTimeFormat("en-US", {
+function taipeiNowParts() {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     weekday: "short",
-  }).format(new Date());
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
 
+  return Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+}
+
+function taipeiDayIndex() {
   return {
     Mon: 0,
     Tue: 1,
@@ -697,23 +709,34 @@ function taipeiDayIndex() {
     Fri: 4,
     Sat: 5,
     Sun: 6,
-  }[weekday] ?? 0;
+  }[taipeiNowParts().weekday] ?? 0;
 }
 
 function taipeiMinutesNow() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Taipei",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
+  const parts = taipeiNowParts();
+  return Number(parts.hour || 0) * 60 + Number(parts.minute || 0);
+}
 
-  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
-  const minute = Number(
-    parts.find((part) => part.type === "minute")?.value || 0,
+function taipeiWeekDates() {
+  const parts = taipeiNowParts();
+  const today = new Date(
+    Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      12,
+    ),
   );
+  const monday = new Date(today);
+  monday.setUTCDate(today.getUTCDate() - taipeiDayIndex());
 
-  return hour * 60 + minute;
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday);
+    date.setUTCDate(monday.getUTCDate() + index);
+    return `${String(date.getUTCMonth() + 1).padStart(2, "0")}/${String(
+      date.getUTCDate(),
+    ).padStart(2, "0")}`;
+  });
 }
 
 function clockMinutes(value) {
@@ -730,102 +753,104 @@ function sameScheduleCourse(left, right) {
   );
 }
 
-function scheduleBlocksForDay(dayIndex) {
-  if (!classScheduleData?.periods) return [];
+function scheduleCourseHash(course) {
+  const value = [course?.name, course?.teacher, course?.room]
+    .filter(Boolean)
+    .join("|");
 
+  let hash = 0;
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function scheduleCourseTheme(course) {
+  const palette = window.NutcTheme?.palette?.() || [
+    "#f0a8c8",
+    "#e8b86d",
+    "#51314a",
+    "#f07178",
+    "#151018",
+  ];
+  const rgba = window.NutcTheme?.rgba || ((color) => color);
+  const usable = [palette[0], palette[1], palette[2]].filter(Boolean);
+  const hash = scheduleCourseHash(course);
+  const accent = usable[hash % usable.length] || palette[0] || "#f0a8c8";
+  const strength = [0.72, 0.62, 0.52][
+    Math.floor(hash / Math.max(1, usable.length)) % 3
+  ];
+
+  return {
+    accent,
+    background:
+      `linear-gradient(150deg, ${rgba(accent, strength)} 0%, ${rgba(
+        accent,
+        Math.max(0.34, strength - 0.2),
+      )} 100%)`,
+    border: rgba(accent, Math.min(0.92, strength + 0.16)),
+    glow: rgba(accent, 0.18),
+  };
+}
+
+function weeklyScheduleBlocks(periods) {
   const blocks = [];
 
-  classScheduleData.periods.forEach((period, periodIndex) => {
-    const course = period.days?.[dayIndex] || {};
-    if (!course.name && !course.teacher && !course.room) return;
+  for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+    let periodIndex = 0;
 
-    const [startTime = "", endTime = ""] = String(period.time || "").split("~");
-    const previous = blocks.at(-1);
-    const gap =
-      previous && clockMinutes(startTime) !== null
-        ? clockMinutes(startTime) - clockMinutes(previous.endTime)
-        : null;
+    while (periodIndex < periods.length) {
+      const course = periods[periodIndex]?.days?.[dayIndex] || {};
 
-    if (
-      previous &&
-      previous.endPeriodIndex === periodIndex - 1 &&
-      sameScheduleCourse(previous, course) &&
-      gap !== null &&
-      gap >= 0 &&
-      gap <= 30
-    ) {
-      previous.endPeriodIndex = periodIndex;
-      previous.endSlot = period.slot;
-      previous.endTime = endTime;
-      return;
+      if (!course.name && !course.teacher && !course.room) {
+        periodIndex += 1;
+        continue;
+      }
+
+      let endPeriodIndex = periodIndex;
+
+      while (
+        endPeriodIndex + 1 < periods.length &&
+        sameScheduleCourse(
+          course,
+          periods[endPeriodIndex + 1]?.days?.[dayIndex] || {},
+        )
+      ) {
+        endPeriodIndex += 1;
+      }
+
+      const startPeriod = periods[periodIndex];
+      const endPeriod = periods[endPeriodIndex];
+      const [startTime = ""] = String(startPeriod.time || "").split("~");
+      const [, endTime = ""] = String(endPeriod.time || "").split("~");
+
+      blocks.push({
+        ...course,
+        dayIndex,
+        startPeriodIndex: periodIndex,
+        endPeriodIndex,
+        startSlot: startPeriod.slot,
+        endSlot: endPeriod.slot,
+        startTime,
+        endTime,
+      });
+
+      periodIndex = endPeriodIndex + 1;
     }
-
-    blocks.push({
-      ...course,
-      startPeriodIndex: periodIndex,
-      endPeriodIndex: periodIndex,
-      startSlot: period.slot,
-      endSlot: period.slot,
-      startTime,
-      endTime,
-    });
-  });
+  }
 
   return blocks;
 }
 
-function renderScheduleTabs() {
-  if (!scheduleDayTabs) return;
-
-  const labels = ["一", "二", "三", "四", "五", "六", "日"];
-  const today = taipeiDayIndex();
-
-  scheduleDayTabs.replaceChildren();
-
-  labels.forEach((label, index) => {
-    const selected = selectedScheduleDay === index;
-    const isToday = today === index;
-    const button = document.createElement("button");
-
-    button.type = "button";
-    button.role = "tab";
-    button.setAttribute("aria-selected", String(selected));
-    button.setAttribute("aria-label", `星期${label}`);
-    button.className = selected
-      ? "relative min-h-[42px] rounded-xl border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1 text-[11px] font-semibold text-[var(--primary)] transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:text-xs"
-      : "relative min-h-[42px] rounded-xl border border-white/[.09] bg-white/[.035] px-1 text-[11px] font-semibold text-[var(--muted)] transition hover:border-white/[.16] hover:bg-white/[.07] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:text-xs";
-
-    const text = document.createElement("span");
-    text.textContent = label;
-    button.append(text);
-
-    if (isToday) {
-      const marker = document.createElement("span");
-      marker.className =
-        "absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[var(--primary)]";
-      marker.setAttribute("aria-hidden", "true");
-      button.append(marker);
-    }
-
-    button.addEventListener("click", () => {
-      selectedScheduleDay = index;
-      renderScheduleTabs();
-      renderScheduleDay({ animate: true });
-    });
-
-    scheduleDayTabs.append(button);
-  });
-}
-
 function setScheduleMessage(message, { kind = "info" } = {}) {
-  if (!scheduleContent) return;
+  if (!scheduleGrid) return;
 
-  scheduleContent.setAttribute("aria-busy", String(kind === "loading"));
-  scheduleContent.replaceChildren();
+  scheduleGrid.setAttribute("aria-busy", String(kind === "loading"));
+  scheduleGrid.replaceChildren();
 
   const card = document.createElement("div");
   card.className =
-    "flex min-h-[96px] items-center justify-center gap-3 rounded-[16px] border border-white/[.08] bg-white/[.035] px-4 text-center text-sm font-medium text-[var(--muted)]";
+    "flex min-h-[180px] items-center justify-center gap-3 px-4 text-center text-sm font-medium text-[var(--muted)]";
 
   const icon = document.createElement("i");
   icon.dataset.lucide =
@@ -843,132 +868,169 @@ function setScheduleMessage(message, { kind = "info" } = {}) {
   text.textContent = message;
 
   card.append(icon, text);
-  scheduleContent.append(card);
+  scheduleGrid.append(card);
   renderIcons();
 }
 
-function renderScheduleDay({ animate = false } = {}) {
-  if (!scheduleContent || !classScheduleData) return;
+function renderScheduleGrid() {
+  if (!scheduleGrid || !classScheduleData?.periods) return;
 
-  const blocks = scheduleBlocksForDay(selectedScheduleDay);
+  const periods = classScheduleData.periods;
+  const blocks = weeklyScheduleBlocks(periods);
+  const dayLabels = classScheduleData.dayLabels || [
+    "週一",
+    "週二",
+    "週三",
+    "週四",
+    "週五",
+    "週六",
+    "週日",
+  ];
+  const weekDates = taipeiWeekDates();
   const today = taipeiDayIndex();
   const nowMinutes = taipeiMinutesNow();
+  const palette = window.NutcTheme?.palette?.() || ["#f0a8c8"];
+  const rgba = window.NutcTheme?.rgba || ((color) => color);
+  const primary = palette[0] || "#f0a8c8";
 
-  scheduleContent.setAttribute("aria-busy", "false");
-  scheduleContent.replaceChildren();
+  scheduleGrid.setAttribute("aria-busy", "false");
+  scheduleGrid.replaceChildren();
 
-  if (!blocks.length) {
-    setScheduleMessage("這天沒有排定課程。");
-    return;
-  }
+  const grid = document.createElement("div");
+  grid.className =
+    "relative grid overflow-hidden rounded-[18px] bg-[rgba(7,7,9,.42)]";
+  grid.style.gridTemplateColumns = "82px repeat(7, minmax(110px, 1fr))";
+  grid.style.gridTemplateRows =
+    `70px repeat(${periods.length}, minmax(82px, auto))`;
 
-  const list = document.createElement("div");
-  list.className = "grid gap-2.5";
+  const corner = document.createElement("div");
+  corner.className =
+    "sticky left-0 z-30 border-b border-r border-white/[.14] bg-[rgba(16,13,19,.96)]";
+  corner.style.gridColumn = "1";
+  corner.style.gridRow = "1";
+  grid.append(corner);
 
-  blocks.forEach((block, index) => {
-    const accent = moduleAccent(index);
-    const rgba = window.NutcTheme?.rgba || ((color) => color);
+  dayLabels.forEach((label, index) => {
+    const header = document.createElement("div");
+    const isToday = index === today;
+    header.className =
+      "z-20 flex flex-col items-center justify-center border-b border-r border-white/[.14] px-2 text-center";
+    header.style.gridColumn = String(index + 2);
+    header.style.gridRow = "1";
+    header.style.background = isToday
+      ? `linear-gradient(180deg, ${rgba(primary, 0.18)}, rgba(255,255,255,.045))`
+      : "rgba(255,255,255,.045)";
+    if (isToday) {
+      header.style.boxShadow = `inset 0 -3px 0 ${rgba(primary, 0.92)}`;
+    }
+
+    const day = document.createElement("strong");
+    day.className =
+      "text-[17px] font-semibold tracking-[-0.02em] text-[var(--foreground)]";
+    day.textContent = String(label).replace("週", "");
+
+    const date = document.createElement("span");
+    date.className = isToday
+      ? "mt-1 text-xs font-semibold text-[var(--primary)]"
+      : "mt-1 text-xs font-medium text-[var(--muted)]";
+    date.textContent = weekDates[index] || "";
+
+    header.append(day, date);
+    grid.append(header);
+  });
+
+  periods.forEach((period, periodIndex) => {
+    const [startTime = "", endTime = ""] = String(period.time || "").split("~");
+
+    const periodLabel = document.createElement("div");
+    periodLabel.className =
+      "sticky left-0 z-30 flex flex-col items-center justify-center border-b border-r border-white/[.14] bg-[rgba(16,13,19,.96)] px-1 text-center";
+    periodLabel.style.gridColumn = "1";
+    periodLabel.style.gridRow = String(periodIndex + 2);
+
+    const slot = document.createElement("strong");
+    slot.className =
+      "text-lg font-semibold leading-none text-[var(--foreground)]";
+    slot.textContent = period.slot;
+
+    const time = document.createElement("span");
+    time.className =
+      "mt-2 text-[10px] font-medium leading-[1.35] text-[var(--muted)]";
+    time.textContent = `${startTime}\n│\n${endTime}`;
+    time.style.whiteSpace = "pre-line";
+
+    periodLabel.append(slot, time);
+    grid.append(periodLabel);
+
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+      const cell = document.createElement("div");
+      cell.className = "border-b border-r border-white/[.10]";
+      cell.style.gridColumn = String(dayIndex + 2);
+      cell.style.gridRow = String(periodIndex + 2);
+      cell.style.background =
+        dayIndex === today
+          ? rgba(primary, 0.025)
+          : "rgba(255,255,255,.012)";
+      grid.append(cell);
+    }
+  });
+
+  blocks.forEach((block) => {
+    const theme = scheduleCourseTheme(block);
     const startMinutes = clockMinutes(block.startTime);
     const endMinutes = clockMinutes(block.endTime);
     const isNow =
-      selectedScheduleDay === today &&
+      block.dayIndex === today &&
       startMinutes !== null &&
       endMinutes !== null &&
       nowMinutes >= startMinutes &&
       nowMinutes <= endMinutes;
 
-    const row = document.createElement("article");
-    row.className =
-      "flex items-stretch gap-3 rounded-[16px] border p-3 shadow-sm sm:p-3.5";
-    row.style.borderColor = rgba(accent, isNow ? 0.36 : 0.16);
-    row.style.background = isNow
-      ? `linear-gradient(110deg, ${rgba(accent, 0.12)} 0%, rgba(255,255,255,.045) 100%)`
-      : "rgba(255,255,255,.035)";
+    const card = document.createElement("article");
+    card.className =
+      "z-10 m-[3px] flex min-h-0 flex-col items-center justify-center overflow-hidden rounded-[9px] border px-2 py-2.5 text-center text-[var(--foreground)] shadow-[0_4px_14px_rgba(0,0,0,.22)]";
+    card.style.gridColumn = String(block.dayIndex + 2);
+    card.style.gridRow =
+      `${block.startPeriodIndex + 2} / ${block.endPeriodIndex + 3}`;
+    card.style.background = theme.background;
+    card.style.borderColor = theme.border;
+    card.style.boxShadow = isNow
+      ? `0 0 0 2px ${rgba(primary, 0.9)}, 0 8px 24px ${theme.glow}`
+      : `0 6px 20px ${theme.glow}`;
+    card.title = [
+      block.name,
+      block.room,
+      block.teacher,
+      `${block.startTime}–${block.endTime}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
-    const time = document.createElement("div");
-    time.className =
-      "flex w-[78px] shrink-0 flex-col justify-center border-r border-white/[.08] pr-3 sm:w-[92px]";
-
-    const timeText = document.createElement("strong");
-    timeText.className =
-      "text-xs font-semibold tabular-nums text-[var(--foreground)] sm:text-sm";
-    timeText.textContent = `${block.startTime}–${block.endTime}`;
-
-    const slotText = document.createElement("span");
-    slotText.className =
-      "mt-1 text-[10px] font-semibold text-[var(--faint)] sm:text-[11px]";
-    slotText.textContent =
-      block.startSlot === block.endSlot
-        ? `第 ${block.startSlot} 節`
-        : `第 ${block.startSlot}–${block.endSlot} 節`;
-
-    time.append(timeText, slotText);
-
-    const copy = document.createElement("div");
-    copy.className = "min-w-0 flex-1";
-
-    const titleLine = document.createElement("div");
-    titleLine.className = "flex flex-wrap items-center gap-2";
-
-    const title = document.createElement("h3");
+    const title = document.createElement("strong");
     title.className =
-      "min-w-0 flex-1 truncate text-sm font-semibold tracking-[-0.015em] text-[var(--foreground)] sm:text-[15px]";
+      "line-clamp-3 text-[14px] font-semibold leading-5 tracking-[-0.015em] sm:text-[15px]";
     title.textContent = block.name || "未命名課程";
-    titleLine.append(title);
+
+    const meta = document.createElement("span");
+    meta.className =
+      "mt-1.5 line-clamp-2 text-[11px] font-semibold leading-4 text-[var(--foreground)] opacity-80";
+    meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
+
+    card.append(title);
+    if (meta.textContent) card.append(meta);
 
     if (isNow) {
       const badge = document.createElement("span");
       badge.className =
-        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--primary)]";
+        "mt-2 rounded-full border border-white/[.18] bg-black/20 px-2 py-0.5 text-[9px] font-semibold tracking-[.02em]";
       badge.textContent = "現在";
-      titleLine.append(badge);
+      card.append(badge);
     }
 
-    const detail = document.createElement("p");
-    detail.className =
-      "mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-[var(--muted)]";
-
-    if (block.room) {
-      const room = document.createElement("span");
-      room.className = "inline-flex items-center gap-1";
-      room.innerHTML =
-        '<i data-lucide="map-pin" class="h-3.5 w-3.5"></i><span></span>';
-      room.querySelector("span").textContent = block.room;
-      detail.append(room);
-    }
-
-    if (block.teacher) {
-      const teacher = document.createElement("span");
-      teacher.className = "inline-flex items-center gap-1";
-      teacher.innerHTML =
-        '<i data-lucide="user-round" class="h-3.5 w-3.5"></i><span></span>';
-      teacher.querySelector("span").textContent = block.teacher;
-      detail.append(teacher);
-    }
-
-    if (!detail.children.length) {
-      const fallback = document.createElement("span");
-      fallback.textContent = "AIS 未提供教室或教師資訊";
-      detail.append(fallback);
-    }
-
-    copy.append(titleLine, detail);
-    row.append(time, copy);
-    list.append(row);
+    grid.append(card);
   });
 
-  scheduleContent.append(list);
-  renderIcons();
-
-  if (animate) {
-    void motion?.stagger?.(list.children, {
-      step: 36,
-      duration: 260,
-      y: 7,
-      scale: 0.99,
-      maxDelay: 150,
-    });
-  }
+  scheduleGrid.append(grid);
 }
 
 function updateScheduleMeta(data) {
@@ -994,7 +1056,7 @@ function updateScheduleMeta(data) {
   scheduleMeta.title = data?.refreshError || "";
 }
 
-async function loadClassSchedule({ force = false, animate = false } = {}) {
+async function loadClassSchedule({ force = false } = {}) {
   if (!scheduleRefreshButton) return;
 
   const refreshIcon = scheduleRefreshButton.querySelector("svg");
@@ -1018,13 +1080,13 @@ async function loadClassSchedule({ force = false, animate = false } = {}) {
     }
 
     classScheduleData = data;
-    renderScheduleTabs();
-    renderScheduleDay({ animate });
+    renderScheduleGrid();
     updateScheduleMeta(data);
   } catch (error) {
     if (classScheduleData) {
       scheduleMeta.textContent = "更新失敗，保留目前課表";
       scheduleMeta.title = error?.message || "";
+      renderScheduleGrid();
       return;
     }
 
@@ -1035,9 +1097,7 @@ async function loadClassSchedule({ force = false, animate = false } = {}) {
       });
     } else if (error?.status === 409) {
       scheduleMeta.textContent = "Server ePortal 使用中";
-      setScheduleMessage("Server ePortal 正在執行其他操作，稍後按更新重試。", {
-        kind: "info",
-      });
+      setScheduleMessage("Server ePortal 正在執行其他操作，稍後按更新重試。");
     } else {
       scheduleMeta.textContent = "課表載入失敗";
       scheduleMeta.title = error?.message || "";
@@ -1053,7 +1113,6 @@ async function loadClassSchedule({ force = false, animate = false } = {}) {
 
 function resetClassScheduleForLoggedOutState() {
   classScheduleData = null;
-  renderScheduleTabs();
   scheduleMeta.textContent = "需要 Server ePortal 登入";
   scheduleMeta.title = "";
   setScheduleMessage("請先從右上角登入 Server ePortal，再載入課表。", {
@@ -1062,7 +1121,7 @@ function resetClassScheduleForLoggedOutState() {
 }
 
 scheduleRefreshButton?.addEventListener("click", () => {
-  void loadClassSchedule({ force: true, animate: true });
+  void loadClassSchedule({ force: true });
 });
 
 function openModule(module) {
@@ -1690,7 +1749,7 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("nutc-theme-change", () => {
   syncThemeMenu();
   if (modulesCache.length) renderModules(modulesCache, { animate: false });
-  if (classScheduleData) renderScheduleDay({ animate: false });
+  if (classScheduleData) renderScheduleGrid();
 });
 
 if (typeof ResizeObserver !== "undefined") {
@@ -1710,8 +1769,6 @@ if (typeof ResizeObserver !== "undefined") {
   ]);
   applyAccountProfile();
   syncThemeMenu();
-  selectedScheduleDay = taipeiDayIndex();
-  renderScheduleTabs();
   renderIcons();
   updateStatusButtonExpansion();
 
@@ -1797,7 +1854,7 @@ if (typeof ResizeObserver !== "undefined") {
     setServerStatus(statusResult.value);
 
     if (statusResult.value.status === "valid") {
-      void loadClassSchedule({ animate: true });
+      void loadClassSchedule();
     } else if (statusResult.value.status === "busy") {
       scheduleMeta.textContent = "Server ePortal 使用中";
       setScheduleMessage("Server ePortal 正在執行其他操作，稍後按更新載入課表。");
