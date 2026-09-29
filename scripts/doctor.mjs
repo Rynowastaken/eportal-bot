@@ -10,11 +10,16 @@ const required = [
   "server.js",
   "src/eportal.js",
   "src/portal-session.js",
+  "src/remote-login.js",
   "scripts/portal-login.mjs",
+  "scripts/portal-login-remote.mjs",
   "scripts/portal-status.mjs",
   "scripts/portal-run.mjs",
   "public/index.html",
+  "public/remote-login.html",
   "public/app.js",
+  "public/remote-login.js",
+  "public/remote-login.css",
   "public/app.css",
   "public/userscript/nutc-portal.user.js",
 ];
@@ -36,6 +41,7 @@ console.log("NUTC Portal runtime check");
 console.log(`  platform: ${process.platform} (${process.arch})`);
 console.log(`  node: ${process.version}`);
 console.log("  interactive ePortal login: server Playwright via npm run login");
+console.log("  remote login: npm run login:remote (requires xpra + HTML5 client)");
 console.log("  server-side browser: required for background/scheduled work");
 console.log("  persistent profile: .eportal-profile/");
 console.log("  background session check: npm run portal:status");
