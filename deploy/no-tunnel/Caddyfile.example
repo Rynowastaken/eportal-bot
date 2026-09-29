@@ -1,0 +1,28 @@
+# Replace portal.example.com with the hostname configured in Cloudflare DNS.
+# Keep the DNS record proxied (orange cloud).
+#
+# This setup does NOT use Cloudflare Tunnel. Cloudflare connects to this
+# machine over normal HTTPS/443, and Caddy proxies only to localhost:4174.
+#
+# Recommended TLS mode in Cloudflare: Full (strict).
+# The certificate paths below are intended for a Cloudflare Origin CA
+# certificate generated for portal.example.com.
+
+portal.example.com {
+    tls /etc/caddy/certs/portal-origin.pem /etc/caddy/certs/portal-origin-key.pem
+
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:4174
+
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+    }
+
+    log {
+        output file /var/log/caddy/eportal-access.log
+        format console
+    }
+}
