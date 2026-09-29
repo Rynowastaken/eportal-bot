@@ -913,6 +913,15 @@ const keepalive = startPortalKeepalive({
 
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
+
+  if (
+    cloudflareAccess.enabled &&
+    !["127.0.0.1", "::1", "localhost"].includes(host)
+  ) {
+    console.warn(
+      "Production note: the Node listener is not loopback-only. For a direct Cloudflare-proxy deployment, set HOST=127.0.0.1 and put Caddy/nginx on public :443.",
+    );
+  }
   console.log(
     cloudflareAccess.enabled
       ? `Dashboard authentication: Cloudflare Access JWT enforced at origin (${cloudflareAccess.publicInfo().teamDomain}).`
