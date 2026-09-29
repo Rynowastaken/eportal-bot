@@ -460,8 +460,13 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
           return;
         }
 
+        console.log(
+          `[handoff] captured external navigation for ${module.id}: ${target.hostname}${target.pathname}`,
+        );
         finish(resolveHandoff, target.toString());
       });
+
+      console.log(`[handoff] triggering module ${module.id}`);
 
       const pageErrors = [];
       const notePage = (page) => {
