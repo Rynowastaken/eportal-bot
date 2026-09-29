@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=12" />
+    <link rel="stylesheet" href="/app.css?v=13" />
   </head>
   <body>
     <main class="app-shell">
@@ -29,9 +29,9 @@
           <p class="eyebrow">DUAL ePORTAL SESSION</p>
           <h2>Server 與目前瀏覽器各自維持獨立 ePortal session。</h2>
           <p>
-            Server 使用 .eportal-profile/ 的 Playwright persistent profile，供排程與背景抓取使用。
-            所有 Dashboard 卡片都可使用 Server 的 .eportal-profile/ 載入資料，因此 Incognito / 訪客模式也能使用。
-            每個內部頁面仍保留「開啟官方系統」入口；那個官方連結才會使用目前瀏覽器自己的 cookie。
+            Server 使用 .eportal-profile/ 的 Playwright persistent profile。點卡片時，
+            Server 會向 ePortal 取得該系統當下產生的短效 SSO handoff，然後立刻把目前瀏覽器
+            redirect 到目標系統。Incognito / 訪客模式不需要先持有 ePortal cookie。
           </p>
         </div>
 
@@ -58,7 +58,7 @@
             <span id="serverPortalStatusDot" class="status-dot idle"></span>
             <div>
               <strong id="serverPortalStatusTitle">Server 背景 ePortal 尚未檢查</strong>
-              <small id="serverPortalStatusDetail">只供背景工作 / 排程，不會登入目前瀏覽器。</small>
+              <small id="serverPortalStatusDetail">供卡片 SSO handoff、背景工作與排程使用。</small>
             </div>
           </div>
         </div>
@@ -70,7 +70,7 @@
           <h2>常用校務系統</h2>
         </div>
         <p>
-          所有卡片預設開啟 Server-backed Dashboard view；若要進入真正的官方網站，再從模組頁面點「開啟官方系統」。
+          卡片會先向 Server 要一個新鮮的 ePortal SSO handoff，再直接開啟真正的目標系統。
         </p>
       </section>
 
@@ -83,7 +83,7 @@
           </span>
           <div>
             <strong>Cloudflare Access 保護 Dashboard</strong>
-            <p>Dashboard 本身由 Cloudflare Access 保護；server-side Chromium 只用於獨立 ePortal session 與背景工作。</p>
+            <p>Dashboard 本身由 Cloudflare Access 保護；server-side Chromium 用於產生 SSO handoff 與背景工作。</p>
           </div>
         </article>
 
@@ -115,6 +115,6 @@
       </section>
     </dialog>
 
-    <script src="/app.js?v=12" type="module"></script>
+    <script src="/app.js?v=13" type="module"></script>
   </body>
 </html>
