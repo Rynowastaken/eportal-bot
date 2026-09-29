@@ -842,6 +842,27 @@ function weeklyScheduleBlocks(periods) {
   return blocks;
 }
 
+function hasScheduleCourse(course) {
+  return Boolean(course?.name || course?.teacher || course?.room);
+}
+
+function visibleScheduleAxes(periods) {
+  const dayIndices = Array.from({ length: 7 }, (_, index) => index).filter(
+    (dayIndex) =>
+      periods.some((period) => hasScheduleCourse(period.days?.[dayIndex])),
+  );
+
+  const periodIndices = periods
+    .map((_, index) => index)
+    .filter((periodIndex) =>
+      dayIndices.some((dayIndex) =>
+        hasScheduleCourse(periods[periodIndex]?.days?.[dayIndex]),
+      ),
+    );
+
+  return { dayIndices, periodIndices };
+}
+
 function setScheduleMessage(message, { kind = "info" } = {}) {
   if (!scheduleGrid) return;
 
@@ -877,6 +898,13 @@ function renderScheduleGrid() {
 
   const periods = classScheduleData.periods;
   const blocks = weeklyScheduleBlocks(periods);
+  const { dayIndices, periodIndices } = visibleScheduleAxes(periods);
+
+  if (!blocks.length || !dayIndices.length || !periodIndices.length) {
+    setScheduleMessage("目前沒有可顯示的課表資料。");
+    return;
+  }
+
   const dayLabels = classScheduleData.dayLabels || [
     "週一",
     "週二",
@@ -892,16 +920,26 @@ function renderScheduleGrid() {
   const palette = window.NutcTheme?.palette?.() || ["#f0a8c8"];
   const rgba = window.NutcTheme?.rgba || ((color) => color);
   const primary = palette[0] || "#f0a8c8";
+  const dayColumn = new Map(
+    dayIndices.map((dayIndex, compactIndex) => [dayIndex, compactIndex + 2]),
+  );
+  const periodRow = new Map(
+    periodIndices.map((periodIndex, compactIndex) => [
+      periodIndex,
+      compactIndex + 2,
+    ]),
+  );
 
   scheduleGrid.setAttribute("aria-busy", "false");
   scheduleGrid.replaceChildren();
 
   const grid = document.createElement("div");
   grid.className =
-    "relative grid overflow-hidden rounded-[18px] bg-[rgba(7,7,9,.42)]";
-  grid.style.gridTemplateColumns = "82px repeat(7, minmax(110px, 1fr))";
+    "relative grid w-full overflow-hidden rounded-[18px] bg-[rgba(7,7,9,.42)]";
+  grid.style.gridTemplateColumns =
+    `clamp(54px, 14vw, 78px) repeat(${dayIndices.length}, minmax(clamp(60px, 16vw, 96px), 1fr))`;
   grid.style.gridTemplateRows =
-    `70px repeat(${periods.length}, minmax(82px, auto))`;
+    `clamp(58px, 13vw, 70px) repeat(${periodIndices.length}, minmax(clamp(68px, 16vw, 82px), auto))`;
 
   const corner = document.createElement("div");
   corner.className =
@@ -910,12 +948,13 @@ function renderScheduleGrid() {
   corner.style.gridRow = "1";
   grid.append(corner);
 
-  dayLabels.forEach((label, index) => {
+  dayIndices.forEach((dayIndex) => {
+    const label = dayLabels[dayIndex];
     const header = document.createElement("div");
-    const isToday = index === today;
+    const isToday = dayIndex === today;
     header.className =
-      "z-20 flex flex-col items-center justify-center border-b border-r border-white/[.14] px-2 text-center";
-    header.style.gridColumn = String(index + 2);
+      "z-20 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.14] px-1 text-center sm:px-2";
+    header.style.gridColumn = String(dayColumn.get(dayIndex));
     header.style.gridRow = "1";
     header.style.background = isToday
       ? `linear-gradient(180deg, ${rgba(primary, 0.18)}, rgba(255,255,255,.045))`
@@ -926,56 +965,63 @@ function renderScheduleGrid() {
 
     const day = document.createElement("strong");
     day.className =
-      "text-[17px] font-semibold tracking-[-0.02em] text-[var(--foreground)]";
+      "text-[14px] font-semibold tracking-[-0.02em] text-[var(--foreground)] sm:text-[17px]";
     day.textContent = String(label).replace("週", "");
 
     const date = document.createElement("span");
     date.className = isToday
-      ? "mt-1 text-xs font-semibold text-[var(--primary)]"
-      : "mt-1 text-xs font-medium text-[var(--muted)]";
-    date.textContent = weekDates[index] || "";
+      ? "mt-1 text-[10px] font-semibold text-[var(--primary)] sm:text-xs"
+      : "mt-1 text-[10px] font-medium text-[var(--muted)] sm:text-xs";
+    date.textContent = weekDates[dayIndex] || "";
 
     header.append(day, date);
     grid.append(header);
   });
 
-  periods.forEach((period, periodIndex) => {
+  periodIndices.forEach((periodIndex) => {
+    const period = periods[periodIndex];
     const [startTime = "", endTime = ""] = String(period.time || "").split("~");
 
     const periodLabel = document.createElement("div");
     periodLabel.className =
-      "sticky left-0 z-30 flex flex-col items-center justify-center border-b border-r border-white/[.14] bg-[rgba(16,13,19,.96)] px-1 text-center";
+      "sticky left-0 z-30 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.14] bg-[rgba(16,13,19,.96)] px-0.5 text-center sm:px-1";
     periodLabel.style.gridColumn = "1";
-    periodLabel.style.gridRow = String(periodIndex + 2);
+    periodLabel.style.gridRow = String(periodRow.get(periodIndex));
 
     const slot = document.createElement("strong");
     slot.className =
-      "text-lg font-semibold leading-none text-[var(--foreground)]";
+      "text-base font-semibold leading-none text-[var(--foreground)] sm:text-lg";
     slot.textContent = period.slot;
 
     const time = document.createElement("span");
     time.className =
-      "mt-2 text-[10px] font-medium leading-[1.35] text-[var(--muted)]";
+      "mt-1.5 text-[9px] font-medium leading-[1.3] text-[var(--muted)] sm:mt-2 sm:text-[10px]";
     time.textContent = `${startTime}\n│\n${endTime}`;
     time.style.whiteSpace = "pre-line";
 
     periodLabel.append(slot, time);
     grid.append(periodLabel);
 
-    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+    dayIndices.forEach((dayIndex) => {
       const cell = document.createElement("div");
       cell.className = "border-b border-r border-white/[.10]";
-      cell.style.gridColumn = String(dayIndex + 2);
-      cell.style.gridRow = String(periodIndex + 2);
+      cell.style.gridColumn = String(dayColumn.get(dayIndex));
+      cell.style.gridRow = String(periodRow.get(periodIndex));
       cell.style.background =
         dayIndex === today
           ? rgba(primary, 0.025)
           : "rgba(255,255,255,.012)";
       grid.append(cell);
-    }
+    });
   });
 
   blocks.forEach((block) => {
+    const compactColumn = dayColumn.get(block.dayIndex);
+    const compactStartRow = periodRow.get(block.startPeriodIndex);
+    const compactEndRow = periodRow.get(block.endPeriodIndex);
+
+    if (!compactColumn || !compactStartRow || !compactEndRow) return;
+
     const theme = scheduleCourseTheme(block);
     const startMinutes = clockMinutes(block.startTime);
     const endMinutes = clockMinutes(block.endTime);
@@ -988,10 +1034,9 @@ function renderScheduleGrid() {
 
     const card = document.createElement("article");
     card.className =
-      "z-10 m-[3px] flex min-h-0 flex-col items-center justify-center overflow-hidden rounded-[9px] border px-2 py-2.5 text-center text-[var(--foreground)] shadow-[0_4px_14px_rgba(0,0,0,.22)]";
-    card.style.gridColumn = String(block.dayIndex + 2);
-    card.style.gridRow =
-      `${block.startPeriodIndex + 2} / ${block.endPeriodIndex + 3}`;
+      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-[8px] border px-1.5 py-2 text-center text-[var(--foreground)] shadow-[0_4px_14px_rgba(0,0,0,.22)] sm:m-[3px] sm:rounded-[9px] sm:px-2 sm:py-2.5";
+    card.style.gridColumn = String(compactColumn);
+    card.style.gridRow = `${compactStartRow} / ${compactEndRow + 1}`;
     card.style.background = theme.background;
     card.style.borderColor = theme.border;
     card.style.boxShadow = isNow
@@ -1008,12 +1053,12 @@ function renderScheduleGrid() {
 
     const title = document.createElement("strong");
     title.className =
-      "line-clamp-3 text-[14px] font-semibold leading-5 tracking-[-0.015em] sm:text-[15px]";
+      "line-clamp-3 break-words text-[11px] font-semibold leading-[1.3] tracking-[-0.015em] sm:text-[14px] sm:leading-5";
     title.textContent = block.name || "未命名課程";
 
     const meta = document.createElement("span");
     meta.className =
-      "mt-1.5 line-clamp-2 text-[11px] font-semibold leading-4 text-[var(--foreground)] opacity-80";
+      "mt-1 line-clamp-2 break-words text-[9px] font-semibold leading-[1.25] text-[var(--foreground)] opacity-80 sm:mt-1.5 sm:text-[11px] sm:leading-4";
     meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
 
     card.append(title);
@@ -1022,7 +1067,7 @@ function renderScheduleGrid() {
     if (isNow) {
       const badge = document.createElement("span");
       badge.className =
-        "mt-2 rounded-full border border-white/[.18] bg-black/20 px-2 py-0.5 text-[9px] font-semibold tracking-[.02em]";
+        "mt-1.5 rounded-full border border-white/[.18] bg-black/20 px-1.5 py-0.5 text-[8px] font-semibold tracking-[.02em] sm:mt-2 sm:px-2 sm:text-[9px]";
       badge.textContent = "現在";
       card.append(badge);
     }
