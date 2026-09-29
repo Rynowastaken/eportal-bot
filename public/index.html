@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=14" />
+    <link rel="stylesheet" href="/app.css?v=15" />
   </head>
   <body>
     <main class="app-shell">
@@ -62,12 +62,21 @@
             </div>
           </div>
 
+          <button
+            id="nativeLoginButton"
+            class="session-login focus-ring hidden"
+            type="button"
+          >
+            <span>重新登入 Server ePortal</span>
+            <span aria-hidden="true">↗</span>
+          </button>
+
           <a
             id="remoteLoginButton"
             class="session-login focus-ring hidden"
             href="/remote-login/"
           >
-            <span>Remote Login 已啟動</span>
+            <span>Xpra fallback 已啟動</span>
             <span aria-hidden="true">↗</span>
           </a>
         </div>
@@ -124,6 +133,6 @@
       </section>
     </dialog>
 
-    <script src="/app.js?v=14" type="module"></script>
+    <script src="/app.js?v=15" type="module"></script>
   </body>
 </html>
