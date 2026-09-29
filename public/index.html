@@ -5,60 +5,145 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=18" />
+    <script src="/tailwind-config.js"></script>
+    <script src="/vendor/tailwindcss-3.4.17.js"></script>
+    <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
-  <body>
-    <main class="app-shell">
-      <header class="topbar">
-        <div class="brand">
-          <p>國立臺中科技大學</p>
-          <h1>NUTC Portal</h1>
+  <body
+    class="min-h-screen overflow-x-hidden bg-[#141018] font-sans text-[var(--foreground)] antialiased"
+  >
+    <div
+      id="portalBackdrop"
+      class="fixed inset-0 -z-20 bg-cover bg-center bg-fixed"
+      aria-hidden="true"
+    ></div>
+    <div
+      class="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,rgba(20,16,24,.10),rgba(20,16,24,.68))]"
+      aria-hidden="true"
+    ></div>
+
+    <main
+      class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-5 px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
+    >
+      <header class="flex min-h-14 items-center justify-between gap-3">
+        <div class="flex min-w-0 items-center gap-3">
+          <div
+            class="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)] shadow-sm"
+            aria-hidden="true"
+          >
+            <i data-lucide="graduation-cap" class="h-5 w-5"></i>
+          </div>
+          <div class="min-w-0">
+            <p
+              class="truncate text-[11px] font-semibold tracking-[0.08em] text-[var(--muted)]"
+            >
+              國立臺中科技大學
+            </p>
+            <h1 class="mt-0.5 truncate text-xl font-semibold tracking-[-0.035em] sm:text-2xl">
+              NUTC Portal
+            </h1>
+          </div>
         </div>
 
-        <div class="server-menu">
+        <div id="serverMenu" class="relative z-50 shrink-0">
           <button
             id="serverStatusButton"
-            class="server-status focus-ring"
+            class="focus-ring inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)]"
             type="button"
             aria-label="Server ePortal 登入狀態"
             aria-haspopup="menu"
             aria-expanded="false"
           >
-            <span id="serverStatusDot" class="status-dot checking"></span>
+            <span
+              id="serverStatusDot"
+              class="h-2.5 w-2.5 rounded-full bg-[var(--accent)] shadow-[0_0_0_4px_rgba(255,255,255,.06)]"
+            ></span>
             <span id="serverStatusText">檢查中</span>
-            <svg class="status-chevron" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M6 8l4 4 4-4" />
-            </svg>
+            <i
+              id="serverStatusChevron"
+              data-lucide="chevron-down"
+              class="h-4 w-4 opacity-60 transition-transform duration-150"
+              aria-hidden="true"
+            ></i>
           </button>
 
           <div
             id="serverStatusMenu"
-            class="status-menu hidden"
+            class="pointer-events-none invisible absolute right-0 top-[calc(100%+.65rem)] w-56 origin-top-right -translate-y-2 scale-[.97] rounded-[20px] border border-white/[.12] bg-[rgba(14,12,16,.92)] p-2 opacity-0 shadow-[0_16px_42px_rgba(0,0,0,.38)] backdrop-blur-[22px] backdrop-saturate-[170%] transition duration-200 ease-soft-out"
             role="menu"
             aria-label="ePortal 選單"
+            aria-hidden="true"
           >
-            <button id="serverLoginAction" type="button" role="menuitem">
-              重新登入
-            </button>
-            <button
-              id="serverLogoutAction"
-              class="danger"
-              type="button"
-              role="menuitem"
-            >
-              登出
-            </button>
+            <div class="grid gap-2">
+              <button
+                id="serverLoginAction"
+                class="focus-ring flex min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10]"
+                type="button"
+                role="menuitem"
+              >
+                <i data-lucide="log-in" class="h-5 w-5 text-[var(--primary)]"></i>
+                <span>重新登入</span>
+              </button>
+
+              <button
+                id="backgroundAction"
+                class="focus-ring flex min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10]"
+                type="button"
+                role="menuitem"
+              >
+                <i data-lucide="image-up" class="h-5 w-5 text-[var(--primary)]"></i>
+                <span>背景圖片</span>
+              </button>
+
+              <button
+                id="clearBackgroundAction"
+                class="focus-ring hidden min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-white/[.12] bg-white/[.07] px-3 text-left text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10]"
+                type="button"
+                role="menuitem"
+              >
+                <i data-lucide="image-minus" class="h-5 w-5 text-[var(--primary)]"></i>
+                <span>移除背景</span>
+              </button>
+
+              <button
+                id="serverLogoutAction"
+                class="focus-ring hidden min-h-[52px] w-full items-center gap-3 rounded-[14px] border border-[#f07178]/20 bg-[#f07178]/[.07] px-3 text-left text-sm font-semibold text-[#f4a0a5] transition duration-150 hover:-translate-y-px hover:border-[#f07178]/30 hover:bg-[#f07178]/[.11]"
+                type="button"
+                role="menuitem"
+              >
+                <i data-lucide="log-out" class="h-5 w-5"></i>
+                <span>登出</span>
+              </button>
+            </div>
           </div>
+
+          <input
+            id="backgroundInput"
+            class="sr-only"
+            type="file"
+            accept="image/*"
+            tabindex="-1"
+          />
         </div>
       </header>
 
-      <section class="systems-heading">
-        <h2>校務系統</h2>
-      </section>
+      <section class="mt-5">
+        <div class="mb-3 flex items-end justify-between gap-3 px-1">
+          <h2 class="text-sm font-semibold tracking-[-0.02em] text-[var(--muted)]">
+            校務系統
+          </h2>
+          <span id="themeSwatches" class="flex items-center gap-1.5" aria-hidden="true"></span>
+        </div>
 
-      <section id="moduleGrid" class="module-grid" aria-live="polite"></section>
+        <section
+          id="moduleGrid"
+          class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
+          aria-live="polite"
+        ></section>
+      </section>
     </main>
 
-    <script src="/app.js?v=19" type="module"></script>
+    <script src="/theme.js?v=1"></script>
+    <script src="/app.js?v=20" type="module"></script>
   </body>
 </html>
