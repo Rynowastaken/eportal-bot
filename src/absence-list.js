@@ -58,137 +58,128 @@ async function fetchFreshAbsences() {
           .replace(/\s+/g, " ")
           .trim();
 
-      const headerScore = (headers) => {
-        const joined = headers.join("|");
-        const patterns = [
-          /日期|時間/,
-          /科目|課程/,
-          /節次|節/,
-          /缺曠|假別|類別|狀態/,
-          /教師|授課/,
-          /星期/,
-        ];
-        return patterns.reduce(
-          (score, pattern) => score + (pattern.test(joined) ? 3 : 0),
-          0,
-        );
-      };
+      const tables = [...document.querySelectorAll("table")];
 
-      const tableCandidates = [...document.querySelectorAll("table")]
+      const candidate = tables
         .map((table) => {
           const rows = [...table.querySelectorAll("tr")];
-          const headerRow =
-            rows.find((row) => row.querySelectorAll("th").length >= 2) ||
-            rows.find((row) => row.querySelectorAll("th,td").length >= 2);
+          const headerRow = rows.find((row) => {
+            const headers = [...row.querySelectorAll("th,td")].map((cell) =>
+              clean(cell.textContent),
+            );
+            const joined = headers.join("|");
 
-          const headers = headerRow
-            ? [...headerRow.querySelectorAll("th,td")].map((cell) =>
-                clean(cell.textContent),
-              )
-            : [];
+            return (
+              /課程/.test(joined) &&
+              /缺曠狀態|缺曠請假|缺曠/.test(joined) &&
+              /上課教師|教師/.test(joined)
+            );
+          });
 
-          const recognizedScore = headerScore(headers);
+          if (!headerRow) return null;
 
-          return {
-            table,
-            rows,
-            headers,
-            headerRow,
-            score:
-              recognizedScore > 0
-                ? recognizedScore + Math.min(rows.length, 12) * 0.1
-                : 0,
-          };
+          const headers = [...headerRow.querySelectorAll("th,td")].map((cell) =>
+            clean(cell.textContent),
+          );
+
+          return { table, rows, headerRow, headers };
         })
-        .filter((candidate) => candidate.rows.length > 0)
-        .sort((a, b) => b.score - a.score);
+        .find(Boolean);
 
-      const candidate = tableCandidates[0] || null;
-
-      if (!candidate || candidate.score < 1) {
+      if (!candidate) {
+        const bodyText = clean(document.body?.innerText || "");
         return {
           items: [],
           headers: [],
           termLabel: "",
-          emptyMessage: /無資料|查無|沒有資料/.test(
-            document.body?.innerText || "",
-          )
+          emptyMessage: /目前沒有資料|無資料|查無/.test(bodyText)
             ? "目前沒有缺曠紀錄。"
             : "AIS 缺曠資料格式無法辨識。",
         };
       }
 
-      const headers = candidate.headers;
+      const { rows, headerRow, headers } = candidate;
       const headerIndex = (pattern) =>
         headers.findIndex((header) => pattern.test(header));
 
-      const dateIndex = headerIndex(/日期|時間/);
-      const courseIndex = headerIndex(/科目|課程/);
-      const periodIndex = headerIndex(/節次|節/);
-      const typeIndex = headerIndex(/缺曠|假別|類別|狀態/);
-      const teacherIndex = headerIndex(/教師|授課/);
-      const weekdayIndex = headerIndex(/星期/);
-      const noteIndex = headerIndex(/備註|說明/);
+      const classIndex = headerIndex(/開課班級|班級/);
+      const courseIndex = headerIndex(/課程/);
+      const groupIndex = headerIndex(/分組/);
+      const requiredIndex = headerIndex(/修別/);
+      const creditIndex = headerIndex(/學分.*時數|學分\/時數/);
+      const teacherIndex = headerIndex(/上課教師|教師/);
+      const statusIndex = headerIndex(/缺曠狀態|缺曠請假|缺曠/);
 
-      let lastDate = "";
       const items = [];
 
-      for (const row of candidate.rows) {
-        if (row === candidate.headerRow) continue;
+      for (const row of rows) {
+        if (row === headerRow) continue;
 
         const cells = [...row.querySelectorAll("td")].map((cell) =>
           clean(cell.textContent),
         );
-        if (cells.length < 2) continue;
-
-        const joined = cells.join(" ");
-        if (!joined || /查詢|搜尋|重設/.test(joined) && cells.length <= 2) {
-          continue;
-        }
+        if (!cells.length) continue;
 
         const read = (index) => (index >= 0 ? cells[index] || "" : "");
+        const status = read(statusIndex);
 
-        let date = read(dateIndex);
-        if (date) lastDate = date;
-        else if (dateIndex >= 0) date = lastDate;
+        if (!status || /^[-—–]+$/.test(status)) continue;
 
-        const item = {
-          date,
-          weekday: read(weekdayIndex),
+        const statusLines = status
+          .split(/\n|\r|、|，|;/)
+          .map(clean)
+          .filter(Boolean);
+
+        items.push({
+          className: read(classIndex),
           course: read(courseIndex),
-          period: read(periodIndex),
-          type: read(typeIndex),
+          group: read(groupIndex),
+          required: read(requiredIndex),
+          credits: read(creditIndex),
           teacher: read(teacherIndex),
-          note: read(noteIndex),
-          cells,
-        };
-
-        const meaningful =
-          item.date ||
-          item.course ||
-          item.period ||
-          item.type ||
-          item.teacher ||
-          item.note;
-
-        if (!meaningful) continue;
-
-        items.push(item);
+          status,
+          statusLines,
+        });
       }
 
       const selectedLabels = [...document.querySelectorAll("select option:checked")]
         .map((option) => clean(option.textContent))
         .filter(Boolean)
-        .filter((label) => /學年|學期|上學期|下學期|第.*學期/.test(label))
+        .filter((label) => /學期|上學期|下學期|第.*學期|\d{2,3}年/.test(label))
         .slice(0, 2);
+
+      const summary = {};
+      const bodyText = clean(document.body?.innerText || "");
+      const summaryLabels = [
+        "曠課",
+        "遲到",
+        "早退",
+        "公假",
+        "事假",
+        "病假",
+        "喪假",
+        "生理假",
+        "婚假",
+        "分娩假",
+        "產前假",
+      ];
+
+      for (const label of summaryLabels) {
+        const pattern = new RegExp(
+          label + "\\s*[：:]?\\s*(\\d+)",
+        );
+        const match = bodyText.match(pattern);
+        if (match) summary[label] = Number(match[1]);
+      }
 
       return {
         items,
         headers,
         termLabel: selectedLabels.join(" "),
+        summary,
         emptyMessage: items.length ? "" : "目前沒有缺曠紀錄。",
       };
-    });
+    });;
 
     return {
       source: "NUTC AIS",
@@ -199,6 +190,7 @@ async function fetchFreshAbsences() {
       headers: parsed.headers || [],
       items: parsed.items || [],
       total: parsed.items?.length || 0,
+      summary: parsed.summary || {},
       emptyMessage: parsed.emptyMessage || "",
     };
   } catch (error) {
