@@ -56,6 +56,43 @@ error
 
 Dashboard 也會顯示 server session 是否需要重新登入。
 
+## Session keepalive
+
+While the Dashboard server is running, it periodically opens the authenticated ePortal
+dashboard with the same persistent `.eportal-profile/`. This gives ePortal a normal
+authenticated page load and allows any sliding/idle session timeout or refreshed cookies
+to be renewed and persisted back into the profile.
+
+Default cadence:
+
+```text
+10 minutes
+```
+
+Configure it with:
+
+```bash
+EPORTAL_KEEPALIVE_MINUTES=5 npm start
+```
+
+Disable it with:
+
+```bash
+EPORTAL_KEEPALIVE_MINUTES=0 npm start
+```
+
+`GET /api/portal-status` also returns a `keepalive` object containing whether it is
+enabled, the interval, the last attempt, the last successful refresh, and the last
+observed status.
+
+Keepalive can reduce **idle-session expiration**, but it cannot override an absolute
+session lifetime, forced logout, password/MFA change, or server-side revocation imposed
+by ePortal. In those cases run `npm run login` again.
+
+All uses of the persistent profile inside the Dashboard server are serialized so a
+keepalive refresh does not launch Chromium against the profile at the same time as an
+SSO handoff.
+
 ## Short-lived SSO handoff launches
 
 Every Dashboard card points to:
