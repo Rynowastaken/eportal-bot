@@ -157,12 +157,14 @@ async function profileExists() {
 export async function openServerPortalSession({
   headless = true,
   viewport = headless ? { width: 1280, height: 900 } : null,
+  launchTimeout = 30_000,
 } = {}) {
   await fs.mkdir(EPORTAL_PROFILE_DIR, { recursive: true, mode: 0o700 });
 
   return chromium.launchPersistentContext(EPORTAL_PROFILE_DIR, {
     headless,
     viewport,
+    timeout: launchTimeout,
   });
 }
 
@@ -426,6 +428,7 @@ export async function openLoginBridgeSession({ timeoutMs = 5_000 } = {}) {
     context = await openServerPortalSession({
       headless: true,
       viewport: { width: 430, height: 860 },
+      launchTimeout: 15_000,
     });
 
     const page = context.pages()[0] || (await context.newPage());
