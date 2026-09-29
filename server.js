@@ -346,6 +346,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/server-login/start") {
+      try {
+        const state = await startLoginBridge({
+          ttlMinutes: loginBridgeTtlMinutes,
+        });
+
+        redirect(res, state.complete ? "/" : state.launchPath);
+      } catch (error) {
+        if (handleBridgeError(res, error)) return;
+        throw error;
+      }
+      return;
+    }
+
     if (
       req.method === "GET" &&
       (url.pathname === "/server-login" ||
