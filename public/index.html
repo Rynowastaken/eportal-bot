@@ -25,8 +25,8 @@
     <main
       class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-5 px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
     >
-      <header class="flex min-h-14 items-center justify-between gap-3">
-        <div class="flex min-w-0 items-center gap-3">
+      <header class="flex min-h-14 flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex min-w-0 flex-1 items-center gap-3">
           <button
             id="accountAvatarButton"
             class="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--primary)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
@@ -51,14 +51,14 @@
             </p>
             <h1
               id="welcomeHeading"
-              class="mt-0.5 truncate text-xl font-semibold tracking-[-0.035em] sm:text-2xl"
+              class="mt-0.5 max-w-full break-words text-lg font-semibold leading-tight tracking-[-0.035em] sm:text-2xl"
             >
               Welcome! <span id="welcomeUsername">User</span>
             </h1>
           </div>
         </div>
 
-        <div class="flex shrink-0 items-center gap-2">
+        <div class="flex shrink-0 items-center justify-end gap-2 sm:justify-start">
           <div id="serverMenu" class="relative z-50">
           <button
             id="serverStatusButton"
@@ -583,6 +583,6 @@
 
     <script src="/theme.js?v=3"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=36" type="module"></script>
+    <script src="/app.js?v=37" type="module"></script>
   </body>
 </html>
