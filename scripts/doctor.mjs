@@ -39,6 +39,7 @@ console.log("  interactive ePortal login: server Playwright via npm run login");
 console.log("  server-side browser: required for background/scheduled work");
 console.log("  persistent profile: .eportal-profile/");
 console.log("  background session check: npm run portal:status");
+console.log(`  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "10 (default)"}`);
 console.log("  client convenience detection: userscript bridge");
 
 for (const error of errors) console.error(`  error: ${error}`);
