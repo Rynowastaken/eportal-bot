@@ -388,53 +388,17 @@ function openModule(module) {
   window.location.assign(module.launchPath);
 }
 
-function mixHex(first, second, amount = 0.5) {
-  const parse = (value) => {
-    const hex = String(value || "").replace("#", "");
-    const full =
-      hex.length === 3
-        ? hex.split("").map((char) => char + char).join("")
-        : hex.padEnd(6, "0").slice(0, 6);
-
-    return [
-      Number.parseInt(full.slice(0, 2), 16) || 0,
-      Number.parseInt(full.slice(2, 4), 16) || 0,
-      Number.parseInt(full.slice(4, 6), 16) || 0,
-    ];
-  };
-
-  const a = parse(first);
-  const b = parse(second);
-  const mix = Math.min(1, Math.max(0, amount));
-
-  return (
-    "#" +
-    a
-      .map((value, index) =>
-        Math.round(value * (1 - mix) + b[index] * mix)
-          .toString(16)
-          .padStart(2, "0"),
-      )
-      .join("")
-  );
-}
-
-function moduleAccent(module, index) {
+function moduleAccent(index) {
   const palette = window.NutcTheme?.palette?.() || [
     "#f0a8c8",
     "#e8b86d",
-    "#51314a",
-    "#f07178",
+    "#c79af4",
+    "#7cc9ff",
+    "#151018",
   ];
-  const roleOrder = [0, 1, 3, 2, 1];
-  const themeColor =
-    palette[roleOrder[index % roleOrder.length] % palette.length] ||
-    palette[0] ||
-    "#f0a8c8";
-  const sourceColor = module.sourceColor || themeColor;
-  const themeBlend = index === 4 ? 0.52 : 0.3;
 
-  return mixHex(sourceColor, themeColor, themeBlend);
+  const order = [0, 1, 2, 3, 1];
+  return palette[order[index % order.length]] || palette[0] || "#f0a8c8";
 }
 
 function renderModules(modules, { animate = false } = {}) {
@@ -442,29 +406,24 @@ function renderModules(modules, { animate = false } = {}) {
   moduleGrid.replaceChildren();
 
   modules.forEach((module, index) => {
-    const accent = moduleAccent(module, index);
+    const accent = moduleAccent(index);
     const rgba = window.NutcTheme?.rgba || ((color) => color);
 
     const button = document.createElement("button");
     button.type = "button";
     button.className =
       "group relative flex min-h-[108px] w-full items-center gap-4 overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 ease-soft-out hover:-translate-y-px hover:bg-white/[.075] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:p-5";
-    button.style.borderColor = rgba(accent, 0.24);
+    button.style.borderColor = rgba(accent, 0.18);
     button.style.background =
-      `linear-gradient(110deg, ${rgba(accent, 0.095)} 0%, ${rgba(accent, 0.035)} 34%, rgba(22,16,28,.08) 58%, rgba(12,10,14,.34) 100%)`;
+      `linear-gradient(110deg, ${rgba(accent, 0.06)} 0%, rgba(22,16,28,.08) 42%, rgba(12,10,14,.34) 100%)`;
     button.setAttribute("aria-label", `開啟 ${module.name}`);
-
-    const tint = document.createElement("span");
-    tint.className =
-      "pointer-events-none absolute inset-y-0 left-0 w-[3px] opacity-80 transition-opacity duration-150 group-hover:opacity-100";
-    tint.style.backgroundColor = accent;
 
     const icon = document.createElement("span");
     icon.className =
       "relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[11px] border transition duration-150 group-hover:-translate-y-px";
     icon.style.color = accent;
-    icon.style.backgroundColor = rgba(accent, 0.14);
-    icon.style.borderColor = rgba(accent, 0.42);
+    icon.style.backgroundColor = rgba(accent, 0.12);
+    icon.style.borderColor = rgba(accent, 0.3);
     icon.innerHTML =
       `<i data-lucide="${module.icon || "route"}" class="h-[20px] w-[20px]"></i>`;
 
@@ -485,18 +444,18 @@ function renderModules(modules, { animate = false } = {}) {
     arrow.className =
       "relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition duration-150 group-hover:translate-x-0.5";
     arrow.style.color = accent;
-    arrow.style.backgroundColor = rgba(accent, 0.08);
-    arrow.style.borderColor = rgba(accent, 0.22);
+    arrow.style.backgroundColor = rgba(accent, 0.07);
+    arrow.style.borderColor = rgba(accent, 0.18);
     arrow.innerHTML =
       '<i data-lucide="arrow-right" class="h-[18px] w-[18px]" aria-hidden="true"></i>';
 
     copy.append(title, description);
-    button.append(tint, icon, copy, arrow);
+    button.append(icon, copy, arrow);
     button.addEventListener("mouseenter", () => {
-      button.style.borderColor = rgba(accent, 0.42);
+      button.style.borderColor = rgba(accent, 0.3);
     });
     button.addEventListener("mouseleave", () => {
-      button.style.borderColor = rgba(accent, 0.24);
+      button.style.borderColor = rgba(accent, 0.18);
     });
     button.addEventListener("click", () => openModule(module));
     moduleGrid.append(button);
