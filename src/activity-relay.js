@@ -603,6 +603,10 @@ function cleanupExpiredSessions() {
 const cleanupTimer = setInterval(cleanupExpiredSessions, 5 * 60 * 1000);
 cleanupTimer.unref?.();
 
+export function clearActivityRelaySessions() {
+  sessions.clear();
+}
+
 export async function startActivityRelay(handoff) {
   const target = allowedTarget(handoff?.url || "");
 
