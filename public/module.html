@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Module · NUTC Portal</title>
+    <link rel="stylesheet" href="/app.css?v=12" />
+  </head>
+  <body>
+    <main class="app-shell student-shell">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <a class="back-link focus-ring" href="/">← Dashboard</a>
+          <div>
+            <p class="eyebrow">SERVER-BACKED MODULE</p>
+            <h1 id="moduleTitle">載入中…</h1>
+          </div>
+        </div>
+
+        <a id="officialLink" class="header-action focus-ring" href="/" target="_blank" rel="noopener">
+          <span>開啟官方系統</span>
+        </a>
+      </header>
+
+      <section class="hero glass student-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">INCOGNITO SAFE</p>
+          <h2 id="moduleHeading">使用 Server ePortal session 載入。</h2>
+          <p id="moduleDescription">
+            目前瀏覽器不需要 ePortal cookie；Server 會使用 .eportal-profile/ 進入官方系統，
+            再把整理後的可見資料送回 Dashboard。
+          </p>
+        </div>
+
+        <div class="session-panel">
+          <div class="session-head">
+            <span id="moduleStatusDot" class="status-dot checking"></span>
+            <div>
+              <strong id="moduleStatusTitle">正在載入</strong>
+              <small id="moduleStatusDetail">正在使用 server-side Playwright session。</small>
+            </div>
+          </div>
+
+          <button id="refreshButton" class="session-login focus-ring" type="button">
+            <span>重新整理</span>
+            <span aria-hidden="true">↻</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="content" class="student-content" aria-live="polite">
+        <article class="info-card glass">
+          <div>
+            <strong>正在連線到官方系統…</strong>
+            <p>Server 正在使用保存的 ePortal session 進入這個模組。</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="/module.js?v=1" type="module"></script>
+  </body>
+</html>
