@@ -1,0 +1,28 @@
+# Copy to /etc/systemd/system/eportal-bot.service and replace the placeholders.
+#
+# The service intentionally binds the Node process to 127.0.0.1 via the
+# EnvironmentFile. Caddy is the only Internet-facing listener.
+
+[Unit]
+Description=NUTC ePortal Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=REPLACE_WITH_LINUX_USER
+Group=REPLACE_WITH_LINUX_GROUP
+WorkingDirectory=/REPLACE/WITH/eportal-bot
+EnvironmentFile=/etc/eportal-bot/eportal.env
+ExecStart=/usr/bin/node /REPLACE/WITH/eportal-bot/server.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+# Keep the process from gaining additional privileges while preserving
+# Playwright's ability to use its browser/profile directories.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
