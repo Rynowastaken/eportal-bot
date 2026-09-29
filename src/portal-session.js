@@ -14,10 +14,118 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 
 export const EPORTAL_PROFILE_DIR = path.join(ROOT, ".eportal-profile");
+export const EPORTAL_PROFILE_LOCK_FILE = path.join(ROOT, "data", "eportal-profile.lock");
 export const STUDENT_BUTTON_SELECTOR = 'button[onclick*="NUTC_6401"]';
 
 let profileQueue = Promise.resolve();
 let keepaliveTimer = null;
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function acquireProfileFileLock({ timeoutMs = 120_000 } = {}) {
+  await fs.mkdir(path.dirname(EPORTAL_PROFILE_LOCK_FILE), {
+    recursive: true,
+    mode: 0o700,
+  });
+
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    try {
+      const handle = await fs.open(EPORTAL_PROFILE_LOCK_FILE, "wx", 0o600);
+      await handle.writeFile(
+        JSON.stringify({
+          pid: process.pid,
+          acquiredAt: new Date().toISOString(),
+        }),
+      );
+      await handle.close();
+
+      let released = false;
+      return async () => {
+        if (released) return;
+        released = true;
+
+        try {
+          const raw = await fs.readFile(EPORTAL_PROFILE_LOCK_FILE, "utf8");
+          const state = JSON.parse(raw);
+          if (state?.pid !== process.pid) return;
+        } catch (error) {
+          if (error?.code === "ENOENT") return;
+        }
+
+        await fs.unlink(EPORTAL_PROFILE_LOCK_FILE).catch(() => {});
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+
+      let stale = false;
+
+      try {
+        const raw = await fs.readFile(EPORTAL_PROFILE_LOCK_FILE, "utf8");
+        const state = JSON.parse(raw);
+        stale = !isProcessAlive(Number(state?.pid));
+      } catch {
+        stale = true;
+      }
+
+      if (stale) {
+        await fs.unlink(EPORTAL_PROFILE_LOCK_FILE).catch(() => {});
+        continue;
+      }
+
+      if (Date.now() >= deadline) {
+        const busy = new Error(
+          "The persistent ePortal browser profile is currently in use.",
+        );
+        busy.code = "EPORTAL_PROFILE_BUSY";
+        throw busy;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
+async function acquireProfileAccess(options = {}) {
+  const previous = profileQueue;
+  let releaseQueue;
+
+  profileQueue = new Promise((resolve) => {
+    releaseQueue = resolve;
+  });
+
+  await previous;
+
+  let releaseFile;
+  try {
+    releaseFile = await acquireProfileFileLock(options);
+  } catch (error) {
+    releaseQueue();
+    throw error;
+  }
+
+  let released = false;
+  return async () => {
+    if (released) return;
+    released = true;
+
+    try {
+      await releaseFile();
+    } finally {
+      releaseQueue();
+    }
+  };
+}
 let keepaliveState = {
   enabled: false,
   intervalMinutes: null,
@@ -27,20 +135,13 @@ let keepaliveState = {
   lastError: null,
 };
 
-async function withProfileLock(task) {
-  const previous = profileQueue;
-  let release;
-
-  profileQueue = new Promise((resolve) => {
-    release = resolve;
-  });
-
-  await previous;
+async function withProfileLock(task, options = {}) {
+  const release = await acquireProfileAccess(options);
 
   try {
     return await task();
   } finally {
-    release();
+    await release();
   }
 }
 
@@ -53,39 +154,53 @@ async function profileExists() {
   }
 }
 
-export async function openServerPortalSession({ headless = true } = {}) {
+export async function openServerPortalSession({
+  headless = true,
+  viewport = headless ? { width: 1280, height: 900 } : null,
+} = {}) {
   await fs.mkdir(EPORTAL_PROFILE_DIR, { recursive: true, mode: 0o700 });
 
   return chromium.launchPersistentContext(EPORTAL_PROFILE_DIR, {
     headless,
-    viewport: headless ? { width: 1280, height: 900 } : null,
+    viewport,
   });
 }
 
-export async function loginServerPortal() {
-  const context = await openServerPortalSession({ headless: false });
-  const page = context.pages()[0] || (await context.newPage());
+export async function loginServerPortal({
+  loginTimeout = 0,
+  viewport = null,
+} = {}) {
+  return withProfileLock(
+    async () => {
+      const context = await openServerPortalSession({
+        headless: false,
+        viewport,
+      });
+      const page = context.pages()[0] || (await context.newPage());
 
-  try {
-    await page.goto(EPORTAL_HOME, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+      try {
+        await page.goto(EPORTAL_HOME, {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        });
 
-    console.log("[+] Server Chromium opened with .eportal-profile/");
-    console.log("[+] Log into ePortal normally.");
-    console.log("[+] Waiting for the Student Management button...");
+        console.log("[+] Server Chromium opened with .eportal-profile/");
+        console.log("[+] Log into ePortal normally.");
+        console.log("[+] Waiting for the Student Management button...");
 
-    await page.locator(STUDENT_BUTTON_SELECTOR).waitFor({
-      state: "attached",
-      timeout: 0,
-    });
+        await page.locator(STUDENT_BUTTON_SELECTOR).waitFor({
+          state: "attached",
+          timeout: loginTimeout,
+        });
 
-    console.log("[+] ePortal login confirmed.");
-    console.log("[+] Persistent profile saved automatically in .eportal-profile/");
-  } finally {
-    await context.close();
-  }
+        console.log("[+] ePortal login confirmed.");
+        console.log("[+] Persistent profile saved automatically in .eportal-profile/");
+      } finally {
+        await context.close();
+      }
+    },
+    { timeoutMs: 10_000 },
+  );
 }
 
 async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
@@ -145,7 +260,23 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
 }
 
 export async function checkServerPortalStatus(options = {}) {
-  return withProfileLock(() => inspectServerPortalSession(options));
+  try {
+    return await withProfileLock(
+      () => inspectServerPortalSession(options),
+      { timeoutMs: 2_000 },
+    );
+  } catch (error) {
+    if (error?.code === "EPORTAL_PROFILE_BUSY") {
+      return {
+        status: "busy",
+        configured: await profileExists(),
+        valid: false,
+        needsLogin: false,
+        checkedAt: new Date().toISOString(),
+      };
+    }
+    throw error;
+  }
 }
 
 export function getPortalKeepaliveState() {
@@ -284,47 +415,66 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
     } finally {
       if (context) await context.close().catch(() => {});
     }
-  });
+  }, { timeoutMs: 5_000 });
 }
 
 export async function openAisWithServerSession({ headless = true } = {}) {
-  return withProfileLock(async () => {
-    const context = await openServerPortalSession({ headless });
+  const release = await acquireProfileAccess({ timeoutMs: 30_000 });
+  let context;
+
+  try {
+    context = await openServerPortalSession({ headless });
     const page = context.pages()[0] || (await context.newPage());
 
-    try {
-      await page.goto(EPORTAL_DASHBOARD, {
-        waitUntil: "domcontentloaded",
-        timeout: 30_000,
-      });
+    await page.goto(EPORTAL_DASHBOARD, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
 
-      const loggedIn =
-        (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+    const loggedIn =
+      (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
-      if (!loggedIn) {
-        const error = new Error(
-          "Server ePortal session expired. Run: npm run login",
-        );
-        error.code = "EPORTAL_LOGIN_REQUIRED";
-        throw error;
-      }
-
-      await page.goto(moduleUrl("ais"), {
-        waitUntil: "domcontentloaded",
-        timeout: 30_000,
-      });
-
-      await page.waitForURL(
-        (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
-        { timeout: 20_000 },
+    if (!loggedIn) {
+      const error = new Error(
+        "Server ePortal session expired. Run: npm run login",
       );
-
-      return { context, page };
-    } catch (error) {
-      await context.close().catch(() => {});
+      error.code = "EPORTAL_LOGIN_REQUIRED";
       throw error;
     }
-  });
+
+    await page.goto(moduleUrl("ais"), {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+
+    await page.waitForURL(
+      (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
+      { timeout: 20_000 },
+    );
+
+    const managedContext = new Proxy(context, {
+      get(target, property) {
+        if (property === "close") {
+          return async (...args) => {
+            try {
+              return await target.close(...args);
+            } finally {
+              await release();
+            }
+          };
+        }
+
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    return { context: managedContext, page };
+  } catch (error) {
+    if (context) await context.close().catch(() => {});
+    await release();
+    throw error;
+  }
 }
 
 export async function requireServerPortalSession() {
