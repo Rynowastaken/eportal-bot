@@ -348,6 +348,32 @@ function setServerStatus(status) {
   }
 
   setStatusIcon(iconKind);
+
+  const rgba = window.NutcTheme?.rgba || ((color) => color);
+  let statusColor = "var(--primary)";
+  let statusBackground = "var(--primary-soft)";
+  let statusBorder = "var(--primary-ring)";
+
+  if (iconKind === "busy") {
+    const accent =
+      window.NutcTheme?.palette?.()?.[1] || "#e8b86d";
+    statusColor = accent;
+    statusBackground = rgba(accent, 0.12);
+    statusBorder = rgba(accent, 0.34);
+  } else if (iconKind === "error") {
+    statusColor = "#f4a0a5";
+    statusBackground = "rgba(240,113,120,.10)";
+    statusBorder = "rgba(240,113,120,.26)";
+  } else if (iconKind === "login") {
+    statusColor = "var(--muted)";
+    statusBackground = "rgba(255,255,255,.055)";
+    statusBorder = "rgba(255,255,255,.12)";
+  }
+
+  serverStatusIcon.style.color = statusColor;
+  serverStatusIcon.style.backgroundColor = statusBackground;
+  serverStatusIcon.style.borderColor = statusBorder;
+
   serverStatusText.textContent = label;
   serverStatusButton.title = detail;
   serverStatusButton.setAttribute("aria-label", detail);
