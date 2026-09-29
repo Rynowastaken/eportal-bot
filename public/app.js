@@ -344,8 +344,8 @@ function renderModules(modules) {
 }
 
 serverLoginButton.addEventListener("click", () => {
-  const opened = window.open("/server-login/start", "_blank", "noopener");
-  if (!opened) window.location.assign("/server-login/start");
+  const opened = window.open("/server-login/", "_blank", "noopener");
+  if (!opened) window.location.assign("/server-login/");
 });
 loginButton.addEventListener("click", openAuthFlow);
 sessionLoginButton.addEventListener("click", openAuthFlow);
