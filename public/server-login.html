@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>Server ePortal Login · NUTC Portal</title>
+    <link rel="stylesheet" href="/server-login.css?v=1" />
+  </head>
+  <body>
+    <main class="login-shell">
+      <header class="login-header">
+        <a class="back-link" href="/">← Dashboard</a>
+        <div>
+          <p class="eyebrow">SERVER ePORTAL LOGIN</p>
+          <h1>原生登入橋接</h1>
+        </div>
+        <button id="closeButton" class="ghost-button" type="button">結束</button>
+      </header>
+
+      <section class="status-card">
+        <span id="statusDot" class="status-dot checking"></span>
+        <div>
+          <strong id="statusTitle">正在連接 Server Chromium</strong>
+          <p id="statusDetail">
+            只同步表單控制項與必要的小型圖片，不串流桌面畫面。
+          </p>
+        </div>
+      </section>
+
+      <section id="pageCard" class="page-card hidden">
+        <div class="page-meta">
+          <div>
+            <p class="eyebrow">LIVE FORM</p>
+            <h2 id="pageTitle">ePortal</h2>
+          </div>
+          <span id="pagePath" class="page-path"></span>
+        </div>
+
+        <div id="messageList" class="message-list"></div>
+        <div id="imageList" class="image-list"></div>
+
+        <form id="bridgeForm" autocomplete="on">
+          <div id="fieldList" class="field-list"></div>
+          <div id="actionList" class="action-list"></div>
+        </form>
+      </section>
+
+      <section id="doneCard" class="done-card hidden">
+        <div class="done-icon">✓</div>
+        <h2>Server ePortal 已登入</h2>
+        <p>
+          Session 已保存在 <code>.eportal-profile/</code>。你可以回 Dashboard
+          直接使用 SSO handoff。
+        </p>
+        <a href="/" class="primary-link">回到 Dashboard</a>
+      </section>
+
+      <section id="errorCard" class="error-card hidden">
+        <h2>登入橋接無法繼續</h2>
+        <p id="errorMessage"></p>
+        <a href="/" class="primary-link">回到 Dashboard</a>
+      </section>
+
+      <footer>
+        <span>輸入值只送到你的 Server，填入 Server 上的真實 ePortal 頁面。</span>
+        <span>不保存、不記錄密碼或 MFA code。</span>
+      </footer>
+    </main>
+
+    <script src="/server-login.js?v=1" type="module"></script>
+  </body>
+</html>
