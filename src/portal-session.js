@@ -154,6 +154,24 @@ function safeUrlLabel(raw) {
   }
 }
 
+function normalizeExternalHandoffUrl(url, eportalOrigin) {
+  const target = url instanceof URL ? new URL(url) : new URL(url);
+
+  if (target.origin === eportalOrigin) return null;
+
+  if (target.protocol === "http:") {
+    const isNutcHost =
+      target.hostname === "nutc.edu.tw" ||
+      target.hostname.endsWith(".nutc.edu.tw");
+
+    if (!isNutcHost) return null;
+    target.protocol = "https:";
+  }
+
+  if (target.protocol !== "https:") return null;
+  return target;
+}
+
 async function profileExists() {
   try {
     const stat = await fs.stat(EPORTAL_PROFILE_DIR);
@@ -433,8 +451,31 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         const label = `${response.status()} ${safeUrlLabel(response.url())}`;
         observed.responses.add(label);
 
-        if (new URL(response.url()).origin === eportalOrigin) {
-          console.log(`[handoff] internal navigation for ${module.id}: ${label}`);
+        const responseUrl = new URL(response.url());
+        if (responseUrl.origin !== eportalOrigin) return;
+
+        console.log(`[handoff] internal navigation for ${module.id}: ${label}`);
+
+        if (![301, 302, 303, 307, 308].includes(response.status())) return;
+
+        const location = response.headers().location;
+        if (!location) return;
+
+        try {
+          const redirected = new URL(location, response.url());
+          const handoffUrl = normalizeExternalHandoffUrl(
+            redirected,
+            eportalOrigin,
+          );
+
+          if (!handoffUrl) return;
+
+          console.log(
+            `[handoff] captured external redirect for ${module.id}: ${handoffUrl.hostname}${handoffUrl.pathname}`,
+          );
+          finish(resolveHandoff, handoffUrl.toString());
+        } catch {
+          // Ignore malformed Location values.
         }
       });
 
@@ -511,10 +552,28 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
           return;
         }
 
-        if (
-          target.protocol !== "https:" ||
-          target.origin === eportalOrigin
-        ) {
+        if (target.origin === eportalOrigin) {
+          await route.continue();
+          return;
+        }
+
+        const handoffUrl = normalizeExternalHandoffUrl(
+          target,
+          eportalOrigin,
+        );
+
+        if (!handoffUrl) {
+          if (target.protocol === "http:") {
+            await route.abort("aborted");
+
+            const error = new Error(
+              "Refusing a non-HTTPS external ePortal handoff outside NUTC domains.",
+            );
+            error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+            finish(rejectHandoff, error);
+            return;
+          }
+
           await route.continue();
           return;
         }
@@ -534,9 +593,9 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         }
 
         console.log(
-          `[handoff] captured external navigation for ${module.id}: ${target.hostname}${target.pathname}`,
+          `[handoff] captured external navigation for ${module.id}: ${handoffUrl.hostname}${handoffUrl.pathname}`,
         );
-        finish(resolveHandoff, target.toString());
+        finish(resolveHandoff, handoffUrl.toString());
       });
 
       console.log(`[handoff] triggering module ${module.id}`);
