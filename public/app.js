@@ -90,8 +90,14 @@ function setServerPortalStatus(status) {
 
   if (status?.status === "valid") {
     serverPortalStatusTitle.textContent = "Server 背景 ePortal 已登入";
+    const keepalive = status.keepalive;
+    const keepaliveText =
+      keepalive?.enabled && keepalive.intervalMinutes
+        ? `Keepalive 每 ${keepalive.intervalMinutes} 分鐘刷新一次。`
+        : "Keepalive 已停用。";
+
     serverPortalStatusDetail.textContent =
-      "供 SSO handoff、背景工作與排程使用；school cookies 仍只留在 Server profile。";
+      `供 SSO handoff、背景工作與排程使用；${keepaliveText}`;
     return;
   }
 
