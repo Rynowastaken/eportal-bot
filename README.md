@@ -8,33 +8,34 @@
 
 # NUTC Portal
 
-A self-hosted personal dashboard for National Taichung University of Science and Technology (NUTC).
+一個為 **國立臺中科技大學（NUTC）** 學生設計的自架個人 Dashboard。
 
-It gives you one place to view your class schedule and absence records, open common ePortal systems, and keep a reusable server-side ePortal session for SSO launches.
+NUTC Portal 將常用的校務資訊集中在同一個頁面，包含課表、缺曠紀錄、ePortal 常用系統入口，以及可重複使用的 Server ePortal 登入狀態。
 
-This is an unofficial personal project and is not affiliated with NUTC.
+> [!NOTE]
+> 本專案為非官方個人專案，與國立臺中科技大學官方無關。
 
-## What it includes
+## 功能
 
-- Weekly class schedule from NUTC AIS
-- Absence / attendance records from NUTC AIS
-- Quick access to Student Management, WebMail, Activity Registration, EP, and TronClass
-- Browser-based Server ePortal login and re-login
-- Automatic ePortal session keepalive
-- Theme colors, custom background, profile name, and avatar
-- Responsive desktop and mobile dashboard
-- Optional Cloudflare Access protection for an internet-facing deployment
+- 從 NUTC AIS 顯示每週課表
+- 顯示 AIS 缺曠紀錄
+- 快速開啟學生管理系統、WebMail、活動報名、EP 與 TronClass
+- 可直接從 Dashboard 登入或重新登入 Server ePortal
+- 自動維持 ePortal 登入狀態
+- 支援自訂配色、背景圖片、顯示名稱與頭像
+- 桌面與手機皆支援 RWD
+- 可選擇使用 Cloudflare Access 保護公開部署的網站
 
-## Quick start
+## 快速開始
 
-### Requirements
+### 系統需求
 
-- Node.js 18 or newer
+- Node.js 18 或更新版本
 - npm
-- An NUTC ePortal account
-- Internet access from the machine running the server
+- NUTC ePortal 帳號
+- 執行伺服器的電腦可以連上網路
 
-Clone the project and install it:
+先下載專案並安裝相依套件：
 
 ```bash
 git clone https://github.com/Rynowastaken/eportal-bot.git
@@ -45,91 +46,111 @@ npm run install-browser
 npm run doctor
 ```
 
-Start the dashboard:
+啟動 Dashboard：
 
 ```bash
 npm start
 ```
 
-Then open:
+接著在瀏覽器開啟：
 
 ```text
 http://localhost:4174
 ```
 
-Cloudflare Access is not required for local use.
+本機使用不需要設定 Cloudflare Access。
 
-On Linux, `npm run install-browser` also installs the Chromium runtime dependencies when the operating system is supported.
+在支援的 Linux 發行版上，`npm run install-browser` 也會一併安裝 Playwright Chromium 所需要的系統套件。
 
-## First login
+## 第一次登入
 
-After opening the dashboard, use **登入 Server ePortal**.
+開啟 Dashboard 後，點選 **登入 Server ePortal**。
 
-The login page controls a server-side Playwright browser and saves the authenticated session in:
+登入頁面會控制伺服器上的 Playwright 瀏覽器，並將登入後的 ePortal session 儲存在：
 
 ```text
 .eportal-profile/
 ```
 
-You do not need a graphical desktop on the server. The login flow works from a phone or another computer through the dashboard itself.
+伺服器不需要圖形桌面環境。你可以直接用手機、平板或另一台電腦透過 Dashboard 完成登入。
 
-Once login succeeds, the dashboard can load AIS data and create SSO handoffs for supported ePortal systems.
+登入成功後，Dashboard 就可以讀取 AIS 課表、缺曠紀錄，以及替支援的 ePortal 系統建立 SSO 登入流程。
 
 > [!IMPORTANT]
-> `.eportal-profile/` contains authenticated browser state. Treat it like a credential. Do not commit it, publish it, or copy it to an untrusted machine.
+> `.eportal-profile/` 內含已登入的瀏覽器狀態，請把它視為帳號憑證。不要 commit、公開上傳，或複製到不受信任的電腦。
 
-## Running on another machine
+## 部署到其他電腦
 
-For a home server, Raspberry Pi, VPS, or other always-on computer, the basic setup is the same:
+如果要放在家用伺服器、Raspberry Pi、VPS 或其他長時間運作的電腦上，安裝方式基本相同：
 
 ```bash
 git clone https://github.com/Rynowastaken/eportal-bot.git
 cd eportal-bot
+
 npm install
 npm run install-browser
 npm run doctor
 npm start
 ```
 
-By default the app uses port `4174`.
+預設使用：
 
-You can change the listener with environment variables:
+```text
+Port 4174
+```
+
+若要讓同一個區域網路內的其他裝置連線，可以改成：
 
 ```bash
 HOST=0.0.0.0 PORT=4174 npm start
 ```
 
-If the machine is only for your local network, protect access to it appropriately and avoid exposing port `4174` directly to the public internet.
+例如伺服器的區網 IP 是 `192.168.1.20`，就可以從其他裝置開啟：
 
-## Public / internet-facing deployment
+```text
+http://192.168.1.20:4174
+```
 
-The recommended production setup is:
+若只在區網內使用，請自行確保網路環境可信任，並避免直接把 `4174` port 暴露到公開網路。
+
+## 對外網路部署
+
+如果需要從外網存取，建議使用以下架構：
 
 ```text
 Internet
   ↓
 Cloudflare Access
   ↓
-Caddy HTTPS reverse proxy
+Caddy HTTPS Reverse Proxy
   ↓
-NUTC Portal on 127.0.0.1:4174
+NUTC Portal（127.0.0.1:4174）
 ```
 
-For a Linux server with a domain name, first complete the normal installation above, then run:
+先完成前面的基本安裝，再在 Linux 伺服器執行：
 
 ```bash
 npm run deploy:configure
 ```
 
-The deployment wizard asks for your hostname, Cloudflare Access settings, Linux service account, Node path, and TLS certificate paths. It generates deployment files under `.deploy/`.
+設定精靈會詢問：
 
-After reviewing them, they can be installed with:
+- Portal 網域名稱
+- Cloudflare Access Team Domain
+- Cloudflare Access Application AUD
+- Linux service 使用者與群組
+- Node.js 路徑
+- TLS 憑證與私鑰路徑
+
+完成後會在 `.deploy/` 產生部署設定檔。
+
+確認內容無誤後，可以執行：
 
 ```bash
 sudo npm run deploy:configure -- --install
 ```
 
-Then validate and start the services:
+接著檢查並啟動服務：
 
 ```bash
 sudo caddy validate --config /etc/caddy/Caddyfile
@@ -138,26 +159,28 @@ sudo systemctl enable --now eportal-bot
 sudo systemctl reload caddy
 ```
 
-You still need to configure the Cloudflare DNS record, Cloudflare Access application, and Origin CA certificate in your own Cloudflare account.
+Cloudflare DNS、Cloudflare Access Application 與 Origin CA 憑證仍需要在你自己的 Cloudflare 帳號中設定。
 
-For the complete production walkthrough, see [docs/cloudflare-access.md](docs/cloudflare-access.md).
+完整部署方式請參考 [Cloudflare Access 部署文件](docs/cloudflare-access.md)。
 
-## Useful commands
+## 常用指令
 
-| Command | Purpose |
+| 指令 | 用途 |
 | --- | --- |
-| `npm start` | Start the dashboard |
-| `npm run doctor` | Check the local environment |
-| `npm run check` | Run JavaScript syntax checks |
-| `npm run install-browser` | Install Playwright Chromium and supported Linux dependencies |
-| `npm run portal:status` | Check the saved server ePortal session |
-| `npm run login` | Open the fallback headed ePortal login flow |
-| `npm run deploy:configure` | Generate production deployment files |
-| `npm run deploy:check` | Validate production environment settings |
+| `npm start` | 啟動 Dashboard |
+| `npm run doctor` | 檢查目前電腦的執行環境 |
+| `npm run check` | 檢查專案 JavaScript 語法 |
+| `npm run install-browser` | 安裝 Playwright Chromium 與支援的 Linux 系統套件 |
+| `npm run portal:status` | 檢查 Server ePortal 登入狀態 |
+| `npm run login` | 使用有介面的 Playwright 登入流程 |
+| `npm run deploy:configure` | 產生正式環境部署設定 |
+| `npm run deploy:check` | 檢查正式環境設定是否完整 |
 
-## Optional settings
+## 可選設定
 
-The defaults should work for normal local use. These environment variables are available when needed:
+一般本機使用不需要修改設定。
+
+需要時可以透過環境變數調整：
 
 ```bash
 PORT=4174
@@ -166,13 +189,13 @@ EPORTAL_KEEPALIVE_MINUTES=10
 EPORTAL_LOGIN_BRIDGE_TTL_MINUTES=15
 ```
 
-For a systemd/PM2/Docker-style supervised process, use:
+如果使用 systemd、PM2、Docker 或其他程序管理工具，建議設定：
 
 ```bash
 EPORTAL_RESTART_MODE=exit
 ```
 
-Production Cloudflare Access deployments additionally use:
+正式 Cloudflare Access 部署還需要：
 
 ```bash
 CLOUDFLARE_ACCESS_ENFORCE=1
@@ -180,25 +203,33 @@ CLOUDFLARE_ACCESS_TEAM_DOMAIN=https://YOUR-TEAM.cloudflareaccess.com
 CLOUDFLARE_ACCESS_AUD=YOUR_APPLICATION_AUD_TAG
 ```
 
-## Data and privacy
+## 資料與隱私
 
-The application stores its persistent ePortal browser session locally in `.eportal-profile/`.
+ePortal 的持久登入狀態會保存在本機：
 
-Dashboard preferences such as the profile name, avatar, and custom background are stored under `data/`.
+```text
+.eportal-profile/
+```
 
-Passwords and MFA values entered through the login bridge are intended to remain in memory only and are not intentionally written to application logs or preference files.
+Dashboard 的顯示名稱、頭像與自訂背景則會保存在：
 
-Do not commit or share:
+```text
+data/
+```
+
+透過 Login Bridge 輸入的密碼與 MFA 驗證資訊，設計上只會暫存在記憶體中，不會刻意寫入應用程式 log 或偏好設定檔。
+
+請勿 commit 或分享：
 
 - `.eportal-profile/`
-- cookies or exported browser state
-- JWT / SSO tokens
-- login bridge tokens
-- private deployment environment files
+- Cookies 或匯出的瀏覽器 session
+- JWT / SSO Token
+- Login Bridge Token
+- 正式環境的私人設定檔
 
-## More documentation
+## 進階文件
 
-- [Cloudflare Access deployment](docs/cloudflare-access.md)
-- [Userscript / client-browser integration](docs/userscript.md)
+- [Cloudflare Access 部署](docs/cloudflare-access.md)
+- [Userscript / Client Browser 整合](docs/userscript.md)
 
-For most users, the steps in **Quick start** and **First login** are all that is required.
+大多數使用者只需要完成 **快速開始** 與 **第一次登入**，就可以開始使用。
