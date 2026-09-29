@@ -38,7 +38,7 @@ export async function createRemoteLoginState({
   port = 14500,
   display = ":100",
   ttlMinutes = 30,
-  bandwidthKbps = 512,
+  bandwidthKbps = 128,
 } = {}) {
   const token = crypto.randomBytes(32).toString("base64url");
   const startedAt = new Date();
@@ -51,7 +51,7 @@ export async function createRemoteLoginState({
     pid: process.pid,
     port: Number(port),
     display,
-    bandwidthKbps: Math.max(128, Number(bandwidthKbps) || 512),
+    bandwidthKbps: Math.max(128, Number(bandwidthKbps) || 128),
     startedAt: startedAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
     tokenHash: hashToken(token),
