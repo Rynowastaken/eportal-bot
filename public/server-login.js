@@ -17,6 +17,7 @@ const closeButton = document.querySelector("#closeButton");
 let token = "";
 let lastState = null;
 let busy = false;
+let startupPollTimer = null;
 const objectUrls = new Set();
 
 function setStatus(kind, title, detail) {
@@ -205,6 +206,11 @@ function collectFields() {
 function render(state) {
   lastState = state;
 
+  if (startupPollTimer) {
+    clearTimeout(startupPollTimer);
+    startupPollTimer = null;
+  }
+
   if (state.complete) {
     pageCard.classList.add("hidden");
     errorCard.classList.add("hidden");
@@ -215,6 +221,37 @@ function render(state) {
       "Persistent profile 已更新；不再需要這個登入頁。",
     );
     disposeImages();
+    return;
+  }
+
+  if (state.active && !state.page) {
+    pageCard.classList.add("hidden");
+    doneCard.classList.add("hidden");
+    errorCard.classList.add("hidden");
+
+    const phaseText = {
+      starting: ["正在啟動 Login Bridge", "Server 正在準備 headless Chromium…"],
+      "checking-session": [
+        "正在檢查 Server ePortal session",
+        "Server Chromium 正在開啟 ePortal，確認是否真的需要重新登入…",
+      ],
+      "opening-login": [
+        "正在開啟 ePortal 登入頁",
+        "已確認需要登入，正在準備原生表單控制項…",
+      ],
+    };
+
+    const [title, detail] =
+      phaseText[state.phase] || [
+        "正在準備登入頁",
+        "等待 Server 上的 ePortal 頁面可供操作…",
+      ];
+
+    setStatus("checking", title, detail);
+
+    startupPollTimer = setTimeout(() => {
+      void refresh();
+    }, 650);
     return;
   }
 
@@ -285,7 +322,11 @@ function render(state) {
 }
 
 async function refresh() {
-  render(await bridgeApi("/api/login-bridge/state"));
+  try {
+    render(await bridgeApi("/api/login-bridge/state"));
+  } catch (error) {
+    showError(error.message);
+  }
 }
 
 async function submitAction(activate = null, pressEnter = false) {
@@ -318,6 +359,11 @@ async function submitAction(activate = null, pressEnter = false) {
 }
 
 function showError(message) {
+  if (startupPollTimer) {
+    clearTimeout(startupPollTimer);
+    startupPollTimer = null;
+  }
+
   pageCard.classList.add("hidden");
   doneCard.classList.add("hidden");
   errorCard.classList.remove("hidden");
