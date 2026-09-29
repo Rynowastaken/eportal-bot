@@ -11,7 +11,7 @@ const portalStatusDetail = document.querySelector("#portalStatusDetail");
 const serverPortalStatusDot = document.querySelector("#serverPortalStatusDot");
 const serverPortalStatusTitle = document.querySelector("#serverPortalStatusTitle");
 const serverPortalStatusDetail = document.querySelector("#serverPortalStatusDetail");
-const remoteLoginButton = document.querySelector("#remoteLoginButton");
+const serverLoginButton = document.querySelector("#serverLoginButton");
 
 const statusDialog = document.querySelector("#statusDialog");
 const dialogTitle = document.querySelector("#dialogTitle");
@@ -105,21 +105,21 @@ function setServerPortalStatus(status) {
   if (status?.status === "busy") {
     serverPortalStatusTitle.textContent = "Server ePortal profile 使用中";
     serverPortalStatusDetail.textContent =
-      "通常表示 Remote Login 或另一個背景工作正在使用 persistent profile。";
+      "Login Bridge 或另一個背景工作正在使用 persistent profile。";
     return;
   }
 
   if (status?.status === "not-configured") {
     serverPortalStatusTitle.textContent = "Server 背景 ePortal 尚未設定";
     serverPortalStatusDetail.textContent =
-      "在 server 主機執行 npm run login 完成一次人工登入。";
+      "點下方「登入 Server ePortal」，使用原生表單橋接完成登入。";
     return;
   }
 
   if (status?.status === "needs-login") {
     serverPortalStatusTitle.textContent = "Server 背景 ePortal 需要重新登入";
     serverPortalStatusDetail.textContent =
-      "保存的 server session 已失效；在 server 主機重新執行 npm run login。";
+      "保存的 server session 已失效；點下方按鈕即可重新登入。";
     return;
   }
 
@@ -133,21 +133,6 @@ async function refreshServerPortalStatus() {
     setServerPortalStatus(await api("/api/portal-status"));
   } catch (error) {
     setServerPortalStatus({ status: "error", error: error.message });
-  }
-}
-
-async function refreshRemoteLoginStatus() {
-  try {
-    const status = await api("/api/remote-login/status");
-    remoteLoginButton.classList.toggle("hidden", !status.active);
-
-    if (status.active) {
-      remoteLoginButton.title = status.expiresAt
-        ? `Remote Login 到期：${new Date(status.expiresAt).toLocaleString()}`
-        : "Remote Login session is active.";
-    }
-  } catch {
-    remoteLoginButton.classList.add("hidden");
   }
 }
 
@@ -358,6 +343,10 @@ function renderModules(modules) {
   }
 }
 
+serverLoginButton.addEventListener("click", () => {
+  const opened = window.open("/server-login/start", "_blank", "noopener");
+  if (!opened) window.location.assign("/server-login/start");
+});
 loginButton.addEventListener("click", openAuthFlow);
 sessionLoginButton.addEventListener("click", openAuthFlow);
 window.addEventListener("message", handleBridgeMessage);
@@ -368,7 +357,6 @@ dialogClose.addEventListener("click", () => statusDialog.close());
     const [{ modules }] = await Promise.all([
       api("/api/modules"),
       refreshServerPortalStatus(),
-      refreshRemoteLoginStatus(),
     ]);
     renderModules(modules);
 
