@@ -594,22 +594,23 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
                   const meta = document.querySelector(
                     'meta[http-equiv="refresh" i]',
                   );
-                  const refresh = meta?.content || "";
+                  let refresh = null;
+
+                  if (meta?.content) {
+                    const match = meta.content.match(/url\s*=\s*(.+)$/i);
+                    if (match) refresh = externalish(match[1].replace(/^['"]|['"]$/g, ""));
+                  }
 
                   return {
                     title: document.title.slice(0, 120),
                     forms,
                     links,
-                    refresh: refresh.slice(0, 200),
-                    bodyText: document.body?.innerText
-                      ?.replace(/\s+/g, " ")
-                      .trim()
-                      .slice(0, 180) || "",
+                    refresh,
                   };
                 });
 
                 console.log(
-                  `[handoff] inspect ${module.id}: ${safeUrlLabel(page.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms)}; links=${JSON.stringify(summary.links)}; refresh=${JSON.stringify(summary.refresh)}; text=${JSON.stringify(summary.bodyText)}`,
+                  `[handoff] inspect ${module.id}: ${safeUrlLabel(page.url())}; title=${JSON.stringify(summary.title)}; forms=${JSON.stringify(summary.forms)}; links=${JSON.stringify(summary.links)}; refresh=${JSON.stringify(summary.refresh)}`,
                 );
               } catch {
                 // Page may close while being inspected.
