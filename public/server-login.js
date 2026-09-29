@@ -15,11 +15,75 @@ let token = "";
 let lastState = null;
 let busy = false;
 let startupPollTimer = null;
+let completionPollTimer = null;
+let completionPollUntil = 0;
 const objectUrls = new Set();
 
 function setStatus(kind, title) {
   statusDot.className = `status-dot ${kind}`;
   statusTitle.textContent = title;
+}
+
+function clearCompletionPolling() {
+  if (completionPollTimer) {
+    clearTimeout(completionPollTimer);
+    completionPollTimer = null;
+  }
+  completionPollUntil = 0;
+}
+
+function isLoginSubmitAction(activate, pressEnter) {
+  if (pressEnter) return true;
+  if (!activate) return false;
+
+  const control = lastState?.page?.controls?.find(
+    (item) => item.key === activate,
+  );
+
+  if (!control) return false;
+
+  const text = [
+    control.text,
+    control.label,
+    control.name,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    control.type === "submit" ||
+    /登入|login|sign\s*in/i.test(text)
+  );
+}
+
+function startCompletionPolling() {
+  clearCompletionPolling();
+  completionPollUntil = Date.now() + 8_000;
+
+  const poll = async () => {
+    if (Date.now() >= completionPollUntil) {
+      clearCompletionPolling();
+      await refresh();
+      return;
+    }
+
+    try {
+      const state = await bridgeApi("/api/login-bridge/state");
+
+      if (state.complete || !state.active) {
+        clearCompletionPolling();
+        render(state);
+        return;
+      }
+
+      completionPollTimer = setTimeout(poll, 500);
+    } catch (error) {
+      clearCompletionPolling();
+      showError(error.message);
+    }
+  };
+
+  completionPollTimer = setTimeout(poll, 350);
 }
 
 function authHeaders(extra = {}) {
@@ -208,6 +272,7 @@ function render(state) {
   }
 
   if (state.complete) {
+    clearCompletionPolling();
     pageCard.classList.add("hidden");
     errorCard.classList.add("hidden");
     setStatus("valid", "登入完成");
@@ -321,6 +386,7 @@ async function refresh() {
 async function submitAction(activate = null, pressEnter = false) {
   if (busy) return;
   busy = true;
+  const watchForCompletion = isLoginSubmitAction(activate, pressEnter);
 
   for (const button of actionList.querySelectorAll("button")) {
     button.disabled = true;
@@ -340,6 +406,10 @@ async function submitAction(activate = null, pressEnter = false) {
     });
 
     render(state);
+
+    if (watchForCompletion && !state.complete) {
+      startCompletionPolling();
+    }
   } catch (error) {
     showError(error.message);
   } finally {
@@ -348,6 +418,8 @@ async function submitAction(activate = null, pressEnter = false) {
 }
 
 function showError(message) {
+  clearCompletionPolling();
+
   if (startupPollTimer) {
     clearTimeout(startupPollTimer);
     startupPollTimer = null;
@@ -374,6 +446,8 @@ bridgeForm.addEventListener("submit", (event) => {
 });
 
 closeButton.addEventListener("click", async () => {
+  clearCompletionPolling();
+
   try {
     if (token) {
       await bridgeApi("/api/login-bridge/stop", { method: "POST" });
