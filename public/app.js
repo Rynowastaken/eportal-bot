@@ -1,5 +1,9 @@
 const motion = window.NutcMotion;
 const moduleGrid = document.querySelector("#moduleGrid");
+const moduleLoadingModules = document.querySelector("#moduleLoadingModules");
+const moduleLoadingPortal = document.querySelector("#moduleLoadingPortal");
+const moduleLoadingDetail = document.querySelector("#moduleLoadingDetail");
+const moduleLoadingElapsed = document.querySelector("#moduleLoadingElapsed");
 const portalBackdrop = document.querySelector("#portalBackdrop");
 const portalHeader = document.querySelector("#portalHeader");
 const portalIdentity = document.querySelector("#portalIdentity");
@@ -1194,10 +1198,72 @@ if (typeof ResizeObserver !== "undefined") {
   renderIcons();
   updateStatusButtonExpansion();
 
+  const loadingStartedAt = performance.now();
+  const loadingTimer = window.setInterval(() => {
+    if (!moduleLoadingElapsed?.isConnected) {
+      window.clearInterval(loadingTimer);
+      return;
+    }
+
+    moduleLoadingElapsed.textContent =
+      ((performance.now() - loadingStartedAt) / 1000).toFixed(1) + "s";
+  }, 100);
+
+  const modulesRequest = api("/api/modules").then(
+    (value) => {
+      if (moduleLoadingModules?.isConnected) {
+        const count = Array.isArray(value.modules) ? value.modules.length : 0;
+        moduleLoadingModules.textContent = `received ${count} module${count === 1 ? "" : "s"}`;
+        moduleLoadingModules.classList.remove("text-[var(--accent)]");
+        moduleLoadingModules.classList.add("text-[var(--primary)]");
+      }
+      return value;
+    },
+    (error) => {
+      if (moduleLoadingModules?.isConnected) {
+        moduleLoadingModules.textContent = "failed";
+        moduleLoadingModules.classList.remove("text-[var(--accent)]");
+        moduleLoadingModules.classList.add("text-[#f4a0a5]");
+      }
+      throw error;
+    },
+  );
+
+  const statusRequest = api("/api/portal-status").then(
+    (value) => {
+      if (moduleLoadingPortal?.isConnected) {
+        moduleLoadingPortal.textContent = value.status || "received";
+        moduleLoadingPortal.classList.remove("text-[var(--accent)]");
+        moduleLoadingPortal.classList.add("text-[var(--primary)]");
+      }
+      return value;
+    },
+    (error) => {
+      if (moduleLoadingPortal?.isConnected) {
+        moduleLoadingPortal.textContent = "failed";
+        moduleLoadingPortal.classList.remove("text-[var(--accent)]");
+        moduleLoadingPortal.classList.add("text-[#f4a0a5]");
+      }
+      throw error;
+    },
+  );
+
+  if (moduleLoadingDetail?.isConnected) {
+    moduleLoadingDetail.textContent =
+      "Waiting for /api/modules and /api/portal-status to finish before rendering the dashboard.";
+  }
+
   const results = await Promise.allSettled([
-    api("/api/modules"),
-    api("/api/portal-status"),
+    modulesRequest,
+    statusRequest,
   ]);
+
+  window.clearInterval(loadingTimer);
+
+  if (moduleLoadingElapsed?.isConnected) {
+    moduleLoadingElapsed.textContent =
+      ((performance.now() - loadingStartedAt) / 1000).toFixed(1) + "s";
+  }
 
   const [modulesResult, statusResult] = results;
 
