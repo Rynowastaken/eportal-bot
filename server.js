@@ -5,7 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, moduleUrl, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
-import { checkServerPortalStatus, fetchAisOverview, fetchModuleOverview } from "./src/portal-session.js";
+import { checkServerPortalStatus, createModuleHandoff, fetchAisOverview, fetchModuleOverview } from "./src/portal-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,8 +54,11 @@ async function readJsonBody(req, limit = 64 * 1024) {
 function redirect(res, location) {
   res.writeHead(302, {
     Location: location,
-    "Cache-Control": "no-store",
+    "Cache-Control": "no-store, private",
+    Pragma: "no-cache",
+    Expires: "0",
     "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
   });
   res.end();
 }
@@ -191,9 +194,25 @@ const server = http.createServer(async (req, res) => {
     const goMatch = req.method === "GET" && url.pathname.match(/^\/go\/([a-z0-9-]+)$/);
     if (goMatch) {
       try {
-        redirect(res, moduleUrl(goMatch[1]));
-      } catch {
-        sendError(res, 404, "Unknown ePortal module.");
+        const handoffUrl = await createModuleHandoff(goMatch[1]);
+        redirect(res, handoffUrl);
+      } catch (error) {
+        if (error?.message === "Unknown ePortal module.") {
+          sendError(res, 404, error.message);
+          return;
+        }
+
+        if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
+          sendError(res, 503, error.message);
+          return;
+        }
+
+        if (error?.code === "EPORTAL_HANDOFF_UNAVAILABLE") {
+          sendError(res, 502, error.message);
+          return;
+        }
+
+        throw error;
       }
       return;
     }
