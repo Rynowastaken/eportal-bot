@@ -25,8 +25,8 @@
     <main
       class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-5 px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
     >
-      <header class="flex min-h-14 items-center justify-between gap-2 sm:gap-3">
-        <div class="flex min-w-0 flex-1 items-center gap-3">
+      <header id="portalHeader" class="flex min-h-14 items-center justify-between gap-2 sm:gap-3">
+        <div id="portalIdentity" class="flex min-w-0 flex-1 items-center gap-3">
           <button
             id="accountAvatarButton"
             class="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[16px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--primary)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:h-12 sm:w-12 sm:rounded-[18px]"
@@ -58,26 +58,30 @@
           </div>
         </div>
 
-        <div class="flex shrink-0 items-center gap-2">
+        <div id="portalActions" class="flex shrink-0 items-center gap-2">
           <div id="serverMenu" class="relative z-50">
           <button
             id="serverStatusButton"
-            class="inline-flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-white/[.12] bg-white/[.07] p-0 text-sm font-semibold text-[var(--foreground)] shadow-sm backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:w-auto sm:gap-2 sm:px-2.5 sm:pr-3"
+            class="inline-flex h-[42px] min-w-[42px] items-center justify-center gap-0 overflow-hidden rounded-xl border border-white/[.12] bg-white/[.07] px-1.5 text-sm font-semibold text-[var(--foreground)] shadow-sm backdrop-blur-[18px] backdrop-saturate-[170%] transition-[gap,padding,background-color,border-color,transform] duration-200 ease-soft-out hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
             type="button"
             aria-label="Server ePortal 登入狀態"
             aria-haspopup="menu"
             aria-expanded="false"
+            data-status-expanded="false"
           >
             <span
               id="serverStatusIcon"
               class="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
               aria-hidden="true"
             ></span>
-            <span id="serverStatusText" class="hidden tracking-[-0.01em] sm:inline">檢查中</span>
+            <span
+              id="serverStatusText"
+              class="max-w-0 overflow-hidden whitespace-nowrap opacity-0 tracking-[-0.01em] transition-[max-width,opacity] duration-200 ease-soft-out"
+            >檢查中</span>
             <i
               id="serverStatusChevron"
               data-lucide="chevron-down"
-              class="ml-0.5 hidden h-4 w-4 text-[var(--muted)] transition-transform duration-150 sm:block"
+              class="h-4 w-0 shrink-0 overflow-hidden text-[var(--muted)] opacity-0 transition-[width,opacity,transform] duration-200 ease-soft-out"
               aria-hidden="true"
             ></i>
           </button>
@@ -583,6 +587,6 @@
 
     <script src="/theme.js?v=3"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=37" type="module"></script>
+    <script src="/app.js?v=38" type="module"></script>
   </body>
 </html>
