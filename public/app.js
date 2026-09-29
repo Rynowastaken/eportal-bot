@@ -83,7 +83,7 @@ function setServerPortalStatus(status) {
   const state =
     status?.status === "valid"
       ? "valid"
-      : status?.status === "error"
+      : status?.status === "error" || status?.status === "busy"
         ? "checking"
         : "invalid";
 
