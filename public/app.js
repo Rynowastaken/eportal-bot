@@ -21,9 +21,21 @@ const themeBrightness = document.querySelector("#themeBrightness");
 const themeBrightnessValue = document.querySelector("#themeBrightnessValue");
 const themeReset = document.querySelector("#themeReset");
 const themeApply = document.querySelector("#themeApply");
+const backgroundUploadDialog = document.querySelector("#backgroundUploadDialog");
+const backgroundUploadClose = document.querySelector("#backgroundUploadClose");
+const backgroundDropzone = document.querySelector("#backgroundDropzone");
+const backgroundChooseFile = document.querySelector("#backgroundChooseFile");
+const backgroundUploadPreview = document.querySelector("#backgroundUploadPreview");
+const backgroundUploadPreviewImage = document.querySelector("#backgroundUploadPreviewImage");
+const backgroundUploadPreviewName = document.querySelector("#backgroundUploadPreviewName");
+const backgroundUploadPreviewSource = document.querySelector("#backgroundUploadPreviewSource");
+const backgroundUploadStatus = document.querySelector("#backgroundUploadStatus");
+const backgroundUploadCancel = document.querySelector("#backgroundUploadCancel");
+const backgroundUploadApply = document.querySelector("#backgroundUploadApply");
 
 let modulesCache = [];
 let stagedThemeSettings = null;
+let pendingBackgroundFile = null;
 
 async function api(path) {
   const response = await fetch(path, {
@@ -145,6 +157,89 @@ function openThemeDialog() {
 function closeThemeDialog() {
   if (themeDialog.open) themeDialog.close();
   stagedThemeSettings = null;
+}
+
+function resetBackgroundUploadDialog() {
+  pendingBackgroundFile = null;
+  backgroundInput.value = "";
+  backgroundDropzone.classList.remove(
+    "border-[var(--primary)]",
+    "bg-[var(--primary-soft)]",
+  );
+  backgroundUploadPreview.classList.add("hidden");
+  backgroundUploadPreviewImage.removeAttribute("src");
+  backgroundUploadPreviewName.textContent = "Selected image";
+  backgroundUploadPreviewSource.textContent = "Ready to use";
+  backgroundUploadStatus.textContent = "";
+  backgroundUploadStatus.classList.remove("text-[#f4a0a5]");
+  backgroundUploadStatus.classList.add("text-[var(--muted)]");
+  backgroundUploadApply.disabled = true;
+}
+
+function setBackgroundUploadStatus(message = "", isError = false) {
+  backgroundUploadStatus.textContent = message;
+  backgroundUploadStatus.classList.toggle("text-[#f4a0a5]", isError);
+  backgroundUploadStatus.classList.toggle("text-[var(--muted)]", !isError);
+}
+
+function openBackgroundUploadDialog() {
+  closeThemeDialog();
+  resetBackgroundUploadDialog();
+
+  if (!backgroundUploadDialog.open) {
+    backgroundUploadDialog.showModal();
+    renderIcons();
+  }
+
+  requestAnimationFrame(() => backgroundChooseFile.focus());
+}
+
+function closeBackgroundUploadDialog({ reopenSettings = false } = {}) {
+  if (backgroundUploadDialog.open) {
+    backgroundUploadDialog.close();
+  }
+
+  resetBackgroundUploadDialog();
+
+  if (reopenSettings) {
+    requestAnimationFrame(() => openThemeDialog());
+  } else {
+    settingsButton.focus();
+  }
+}
+
+function readBackgroundImageFile(file, sourceLabel = "Selected from files") {
+  if (!file) return;
+
+  if (!String(file.type || "").startsWith("image/")) {
+    setBackgroundUploadStatus("請選擇或貼上一張圖片。", true);
+    return;
+  }
+
+  if (file.size > 25 * 1024 * 1024) {
+    setBackgroundUploadStatus("圖片太大，請選擇 25 MB 以下的圖片。", true);
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    pendingBackgroundFile = file;
+    backgroundUploadPreviewImage.src = String(reader.result || "");
+    backgroundUploadPreviewName.textContent =
+      file.name || "Pasted image";
+    backgroundUploadPreviewSource.textContent = sourceLabel;
+    backgroundUploadPreview.classList.remove("hidden");
+    backgroundUploadApply.disabled = false;
+    setBackgroundUploadStatus("圖片已準備好，確認預覽後即可套用。");
+    renderIcons();
+  };
+
+  reader.onerror = () => {
+    setBackgroundUploadStatus("無法讀取這張圖片，請換一張再試。", true);
+  };
+
+  reader.readAsDataURL(file);
 }
 
 function setStatusIcon(kind) {
@@ -357,25 +452,110 @@ themeApply.addEventListener("click", () => {
 });
 
 backgroundAction.addEventListener("click", () => {
+  openBackgroundUploadDialog();
+});
+
+backgroundChooseFile.addEventListener("click", () => {
+  backgroundInput.value = "";
   backgroundInput.click();
 });
 
-backgroundInput.addEventListener("change", async () => {
-  const file = backgroundInput.files?.[0];
-  backgroundInput.value = "";
+backgroundInput.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
   if (!file) return;
+  readBackgroundImageFile(file, "從檔案選擇");
+});
 
-  backgroundAction.disabled = true;
+["dragenter", "dragover"].forEach((eventName) => {
+  backgroundDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    backgroundDropzone.classList.add(
+      "border-[var(--primary)]",
+      "bg-[var(--primary-soft)]",
+    );
+  });
+});
+
+["dragleave", "drop"].forEach((eventName) => {
+  backgroundDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    backgroundDropzone.classList.remove(
+      "border-[var(--primary)]",
+      "bg-[var(--primary-soft)]",
+    );
+  });
+});
+
+backgroundDropzone.addEventListener("drop", (event) => {
+  const file = [...(event.dataTransfer?.files || [])].find((entry) =>
+    String(entry.type || "").startsWith("image/"),
+  );
+
+  if (!file) {
+    setBackgroundUploadStatus("請拖曳圖片檔案到這裡。", true);
+    return;
+  }
+
+  readBackgroundImageFile(file, "拖曳到上傳視窗");
+});
+
+backgroundUploadDialog.addEventListener("paste", (event) => {
+  const items = [...(event.clipboardData?.items || [])];
+  const imageItem = items.find((item) =>
+    String(item.type || "").startsWith("image/"),
+  );
+  const file = imageItem?.getAsFile();
+
+  if (!file) {
+    setBackgroundUploadStatus("剪貼簿裡沒有圖片。", true);
+    return;
+  }
+
+  event.preventDefault();
+  readBackgroundImageFile(file, "從剪貼簿貼上");
+});
+
+backgroundUploadApply.addEventListener("click", async () => {
+  if (!pendingBackgroundFile) return;
+
+  backgroundUploadApply.disabled = true;
+  backgroundChooseFile.disabled = true;
+  setBackgroundUploadStatus("正在處理並套用背景…");
 
   try {
-    await window.NutcTheme.setBackgroundFile(file);
+    await window.NutcTheme.setBackgroundFile(pendingBackgroundFile);
     syncThemeMenu();
     renderModules(modulesCache);
+    closeBackgroundUploadDialog({ reopenSettings: true });
   } catch (error) {
-    console.error("Background update failed:", error);
+    backgroundUploadApply.disabled = false;
+    setBackgroundUploadStatus(
+      "無法套用背景：" + (error?.message || String(error)),
+      true,
+    );
   } finally {
-    backgroundAction.disabled = false;
+    backgroundChooseFile.disabled = false;
   }
+});
+
+backgroundUploadClose.addEventListener("click", () => {
+  closeBackgroundUploadDialog({ reopenSettings: true });
+});
+
+backgroundUploadCancel.addEventListener("click", () => {
+  closeBackgroundUploadDialog({ reopenSettings: true });
+});
+
+backgroundUploadDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeBackgroundUploadDialog({ reopenSettings: true });
+});
+
+backgroundUploadDialog.addEventListener("click", (event) => {
+  if (event.target !== backgroundUploadDialog) return;
+  closeBackgroundUploadDialog({ reopenSettings: true });
 });
 
 clearBackgroundAction.addEventListener("click", () => {
@@ -422,20 +602,16 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#serverMenu")) {
     setServerMenuOpen(false);
   }
-
-  if (!event.target.closest("#settingsMenu")) {
-  }
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    const settingsWasOpen =
-      settingsButton.getAttribute("aria-expanded") === "true";
-
+  if (
+    event.key === "Escape" &&
+    !themeDialog.open &&
+    !backgroundUploadDialog.open
+  ) {
     setServerMenuOpen(false);
-
-    if (settingsWasOpen) settingsButton.focus();
-    else serverStatusButton.focus();
+    serverStatusButton.focus();
   }
 });
 
