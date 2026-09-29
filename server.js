@@ -20,6 +20,7 @@ import {
   startLoginBridge,
   stopLoginBridge,
 } from "./src/login-bridge.js";
+import { createCloudflareAccessGuard } from "./src/cloudflare-access.js";
 import { DashboardPreferenceStore } from "./src/dashboard-preferences.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import {
@@ -47,6 +48,13 @@ const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
 const loginBridgeTtlMinutes = Number(
   process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES ?? 15,
 );
+const cloudflareAccess = createCloudflareAccessGuard({
+  enforce: /^(1|true|yes)$/i.test(
+    String(process.env.CLOUDFLARE_ACCESS_ENFORCE || ""),
+  ),
+  teamDomain: process.env.CLOUDFLARE_ACCESS_TEAM_DOMAIN || "",
+  audience: process.env.CLOUDFLARE_ACCESS_AUD || "",
+});
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -472,6 +480,54 @@ const server = http.createServer(async (req, res) => {
   );
 
   try {
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/login" || url.pathname === "/login/")
+    ) {
+      await serveStatic(res, "/access-login.html");
+      return;
+    }
+
+    const accessResult = await cloudflareAccess.verify(req);
+
+    if (!accessResult.ok) {
+      console.warn(
+        `[access] rejected ${req.method} ${url.pathname}: ${accessResult.code}`,
+      );
+
+      if (cloudflareAccess.wantsHtml(req)) {
+        redirect(res, "/login");
+      } else {
+        sendError(
+          res,
+          accessResult.status || 401,
+          accessResult.message || "Cloudflare Access authentication is required.",
+          accessResult.code || "CF_ACCESS_REQUIRED",
+        );
+      }
+      return;
+    }
+
+    req.cloudflareAccess = accessResult.payload;
+
+    if (req.method === "GET" && url.pathname === "/auth/start") {
+      redirect(res, "/");
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/access/session") {
+      const payload = req.cloudflareAccess || {};
+      sendJson(res, 200, {
+        enforced: cloudflareAccess.enabled,
+        authenticated: Boolean(req.cloudflareAccess),
+        email:
+          typeof payload.email === "string" ? payload.email : null,
+        subject:
+          typeof payload.sub === "string" ? payload.sub : null,
+      });
+      return;
+    }
+
     if (url.pathname.startsWith("/activity-relay/")) {
       try {
         await proxyActivityRelay(req, res, url);
@@ -502,7 +558,10 @@ const server = http.createServer(async (req, res) => {
         restartScheduled,
         platform: process.platform,
         arch: process.arch,
-        authMode: "cloudflare-access",
+        authMode: cloudflareAccess.enabled
+          ? "cloudflare-access-jwt"
+          : "cloudflare-access-delegated",
+        cloudflareAccess: cloudflareAccess.publicInfo(),
         eportalSessionMode: "server-playwright-and-client-browser",
         eportalOrigin: EPORTAL_ORIGIN,
       });
@@ -851,7 +910,14 @@ const keepalive = startPortalKeepalive({
 
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
-  console.log("Dashboard authentication: delegated to Cloudflare Access.");
+  console.log(
+    cloudflareAccess.enabled
+      ? `Dashboard authentication: Cloudflare Access JWT enforced at origin (${cloudflareAccess.publicInfo().teamDomain}).`
+      : "Dashboard authentication: delegated to Cloudflare Access; origin JWT enforcement is disabled.",
+  );
+  console.log(
+    "Cloudflare Access pre-auth screen: /login (configure only this path as public/bypassed at the edge).",
+  );
   console.log(
     "Server ePortal session: persistent Playwright profile at .eportal-profile/",
   );
