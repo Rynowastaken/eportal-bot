@@ -80,13 +80,34 @@ persistent profile remains on disk.
 For machines that actually have a local graphical desktop, `npm run login` remains
 available as a headed Playwright fallback, but it is not required for an SSH-only server.
 
+## Cloudflare Access deployment
+
+The deployed Portal can show its own branded pre-auth screen at `/login`, then hand
+authentication to Cloudflare Access. The protected `/auth/start` route triggers the
+Access challenge; after the Access policy passes, the origin validates the
+`Cf-Access-Jwt-Assertion` signature, issuer, and application AUD before serving the
+Dashboard or any API.
+
+Production configuration:
+
+```bash
+CLOUDFLARE_ACCESS_ENFORCE=1
+CLOUDFLARE_ACCESS_TEAM_DOMAIN=https://YOUR-TEAM.cloudflareaccess.com
+CLOUDFLARE_ACCESS_AUD=YOUR_APPLICATION_AUD_TAG
+```
+
+Only `/login*` should be configured as a public/Bypass path in Cloudflare Access.
+Everything else stays behind the normal Allow policy. See
+[docs/cloudflare-access.md](docs/cloudflare-access.md) for the Tunnel, Access
+application, path override, and verification setup.
+
 ## Start Dashboard
 
 ```bash
 npm start
 ```
 
-Dashboard 預期放在 Cloudflare Access 後方。
+Dashboard 預期放在 Cloudflare Access 後方。Production deployments should enable origin JWT validation as described above.
 
 Server-side ePortal 狀態可由：
 
