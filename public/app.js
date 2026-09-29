@@ -1,6 +1,9 @@
 const motion = window.NutcMotion;
 const moduleGrid = document.querySelector("#moduleGrid");
 const portalBackdrop = document.querySelector("#portalBackdrop");
+const portalHeader = document.querySelector("#portalHeader");
+const portalIdentity = document.querySelector("#portalIdentity");
+const portalActions = document.querySelector("#portalActions");
 const serverMenu = document.querySelector("#serverMenu");
 const serverStatusButton = document.querySelector("#serverStatusButton");
 const serverStatusIcon = document.querySelector("#serverStatusIcon");
@@ -59,6 +62,8 @@ let stagedThemeSettings = null;
 let pendingBackgroundFile = null;
 let lastStatusIconKind = "";
 let initialModulesAnimated = false;
+let statusPointerInside = false;
+let statusFocusInside = false;
 
 const accountNameKey = "nutc-portal-account-name-v1";
 const accountAvatarKey = "nutc-portal-account-avatar-v1";
@@ -566,6 +571,7 @@ function setServerStatus(status) {
   serverStatusIcon.style.borderColor = statusBorder;
 
   serverStatusText.textContent = label;
+  updateStatusButtonExpansion();
   serverStatusButton.title = detail;
   serverStatusButton.setAttribute("aria-label", detail);
 
@@ -675,6 +681,72 @@ function showLoadError(message) {
   moduleGrid.append(card);
 }
 
+function setStatusButtonExpanded(expanded) {
+  serverStatusButton.dataset.statusExpanded = String(expanded);
+
+  serverStatusButton.classList.toggle("gap-2", expanded);
+  serverStatusButton.classList.toggle("px-2.5", expanded);
+  serverStatusButton.classList.toggle("pr-3", expanded);
+  serverStatusButton.classList.toggle("gap-0", !expanded);
+  serverStatusButton.classList.toggle("px-1.5", !expanded);
+
+  serverStatusText.classList.toggle("max-w-[8rem]", expanded);
+  serverStatusText.classList.toggle("opacity-100", expanded);
+  serverStatusText.classList.toggle("max-w-0", !expanded);
+  serverStatusText.classList.toggle("opacity-0", !expanded);
+
+  serverStatusChevron.classList.toggle("w-4", expanded);
+  serverStatusChevron.classList.toggle("opacity-100", expanded);
+  serverStatusChevron.classList.toggle("ml-0.5", expanded);
+  serverStatusChevron.classList.toggle("w-0", !expanded);
+  serverStatusChevron.classList.toggle("opacity-0", !expanded);
+  serverStatusChevron.classList.toggle("ml-0", !expanded);
+}
+
+function statusButtonHasRoom() {
+  if (!portalHeader || !portalIdentity || !portalActions) return false;
+
+  const headerWidth = portalHeader.getBoundingClientRect().width;
+  const settingsWidth = settingsButton.getBoundingClientRect().width;
+  const avatarWidth = accountAvatarButton.getBoundingClientRect().width;
+  const identityText = portalIdentity.querySelector("div");
+  const identityTextWidth = Math.min(
+    330,
+    Math.max(150, identityText?.scrollWidth || 150),
+  );
+  const identityNeeded = avatarWidth + 12 + identityTextWidth;
+
+  const statusNeeded =
+    28 +
+    Math.min(128, Math.max(38, serverStatusText.scrollWidth)) +
+    16 +
+    16 +
+    22;
+
+  const outerGap = window.innerWidth >= 640 ? 12 : 8;
+  const actionGap = 8;
+
+  return (
+    headerWidth >=
+    identityNeeded +
+      outerGap +
+      statusNeeded +
+      actionGap +
+      settingsWidth
+  );
+}
+
+function updateStatusButtonExpansion() {
+  const menuOpen =
+    serverStatusButton.getAttribute("aria-expanded") === "true";
+  const forced =
+    statusPointerInside ||
+    statusFocusInside ||
+    menuOpen;
+
+  setStatusButtonExpanded(forced || statusButtonHasRoom());
+}
+
 function setFloatingMenuOpen(button, panel, open) {
   button.setAttribute("aria-expanded", String(open));
   panel.setAttribute("aria-hidden", String(!open));
@@ -695,7 +767,28 @@ function setFloatingMenuOpen(button, panel, open) {
 function setServerMenuOpen(open) {
   serverStatusChevron.classList.toggle("rotate-180", open);
   setFloatingMenuOpen(serverStatusButton, serverStatusMenu, open);
+  updateStatusButtonExpansion();
 }
+
+serverStatusButton.addEventListener("pointerenter", () => {
+  statusPointerInside = true;
+  updateStatusButtonExpansion();
+});
+
+serverStatusButton.addEventListener("pointerleave", () => {
+  statusPointerInside = false;
+  updateStatusButtonExpansion();
+});
+
+serverStatusButton.addEventListener("focusin", () => {
+  statusFocusInside = true;
+  updateStatusButtonExpansion();
+});
+
+serverStatusButton.addEventListener("focusout", () => {
+  statusFocusInside = false;
+  requestAnimationFrame(updateStatusButtonExpansion);
+});
 
 serverStatusButton.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -1084,11 +1177,22 @@ window.addEventListener("nutc-theme-change", () => {
   if (modulesCache.length) renderModules(modulesCache, { animate: false });
 });
 
+if (typeof ResizeObserver !== "undefined") {
+  const statusLayoutObserver = new ResizeObserver(() => {
+    updateStatusButtonExpansion();
+  });
+  statusLayoutObserver.observe(portalHeader);
+  statusLayoutObserver.observe(portalIdentity);
+} else {
+  window.addEventListener("resize", updateStatusButtonExpansion);
+}
+
 (async () => {
   await window.NutcTheme.init();
   applyAccountProfile();
   syncThemeMenu();
   renderIcons();
+  updateStatusButtonExpansion();
 
   const results = await Promise.allSettled([
     api("/api/modules"),
