@@ -47,10 +47,11 @@ function renderThemeSwatches() {
     themeSwatches.append(dot);
   }
 
-  clearBackgroundAction.classList.toggle(
-    "hidden",
-    !window.NutcTheme?.hasBackground?.(),
+  const showClearBackground = Boolean(
+    window.NutcTheme?.hasBackground?.(),
   );
+  clearBackgroundAction.classList.toggle("hidden", !showClearBackground);
+  clearBackgroundAction.classList.toggle("flex", showClearBackground);
 }
 
 function setServerStatus(status) {
@@ -84,6 +85,7 @@ function setServerStatus(status) {
   serverLoginAction.querySelector("span").textContent =
     canLogout ? "重新登入" : "登入";
   serverLogoutAction.classList.toggle("hidden", !canLogout);
+  serverLogoutAction.classList.toggle("flex", canLogout);
 }
 
 function openModule(module) {
