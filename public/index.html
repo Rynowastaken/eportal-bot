@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <link rel="stylesheet" href="/app.css?v=11" />
+    <link rel="stylesheet" href="/app.css?v=12" />
   </head>
   <body>
     <main class="app-shell">
@@ -30,8 +30,8 @@
           <h2>Server 與目前瀏覽器各自維持獨立 ePortal session。</h2>
           <p>
             Server 使用 .eportal-profile/ 的 Playwright persistent profile，供排程與背景抓取使用。
-            「學生管理」使用 Server 的 .eportal-profile/ 載入資料，因此 Incognito / 訪客模式也能使用。
-            其他官方系統卡片仍使用目前瀏覽器自己的 ePortal cookie。
+            所有 Dashboard 卡片都可使用 Server 的 .eportal-profile/ 載入資料，因此 Incognito / 訪客模式也能使用。
+            每個內部頁面仍保留「開啟官方系統」入口；那個官方連結才會使用目前瀏覽器自己的 cookie。
           </p>
         </div>
 
@@ -70,7 +70,7 @@
           <h2>常用校務系統</h2>
         </div>
         <p>
-          「學生管理」由 Server session 載入 Dashboard 內的 AIS 資料；其他卡片仍直接開啟官方系統並使用目前瀏覽器的 session。
+          所有卡片預設開啟 Server-backed Dashboard view；若要進入真正的官方網站，再從模組頁面點「開啟官方系統」。
         </p>
       </section>
 
@@ -115,6 +115,6 @@
       </section>
     </dialog>
 
-    <script src="/app.js?v=11" type="module"></script>
+    <script src="/app.js?v=12" type="module"></script>
   </body>
 </html>
