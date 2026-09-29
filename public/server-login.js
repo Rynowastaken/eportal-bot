@@ -435,7 +435,7 @@ function render(state) {
     const enter = document.createElement("button");
     enter.type = "submit";
     enter.className =
-      "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
+      "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
     enter.textContent = "繼續";
     actionList.append(enter);
   }
@@ -558,7 +558,7 @@ closeButton.addEventListener("click", async () => {
   renderIcons();
 
   void motion?.stagger?.(
-    document.querySelectorAll("main > header, main > section"),
+    document.querySelectorAll("main > header, main > section:not(.hidden)"),
     {
       step: 55,
       duration: 320,
