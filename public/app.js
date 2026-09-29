@@ -1,18 +1,18 @@
 const moduleGrid = document.querySelector("#moduleGrid");
+const serverMenu = document.querySelector("#serverMenu");
 const serverStatusButton = document.querySelector("#serverStatusButton");
 const serverStatusDot = document.querySelector("#serverStatusDot");
 const serverStatusText = document.querySelector("#serverStatusText");
+const serverStatusChevron = document.querySelector("#serverStatusChevron");
 const serverStatusMenu = document.querySelector("#serverStatusMenu");
 const serverLoginAction = document.querySelector("#serverLoginAction");
 const serverLogoutAction = document.querySelector("#serverLogoutAction");
+const backgroundAction = document.querySelector("#backgroundAction");
+const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
+const backgroundInput = document.querySelector("#backgroundInput");
+const themeSwatches = document.querySelector("#themeSwatches");
 
-const icons = {
-  "graduation-cap": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-5 9 5-9 5-9-5zM7 11v5c3 2 7 2 10 0v-5M21 9v6"/></svg>`,
-  mail: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM22 7l-10 7L2 7"/></svg>`,
-  "clipboard-check": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h6M9 3h6v4H9zM7 5H5a2 2 0 0 0-2 2v13h18V7a2 2 0 0 0-2-2h-2M8 13l2 2 5-5"/></svg>`,
-  route: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h3a4 4 0 0 0 4-4V9a4 4 0 0 1 4-4"/></svg>`,
-  "book-open-check": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5a3 3 0 0 1 3-3h6v18H5a3 3 0 0 0-3 2V5zM22 5a3 3 0 0 0-3-3h-6v18h6a3 3 0 0 1 3 2V5zM15 11l2 2 3-4"/></svg>`,
-};
+let modulesCache = [];
 
 async function api(path) {
   const response = await fetch(path, {
@@ -29,36 +29,60 @@ async function api(path) {
   return data;
 }
 
+function renderIcons() {
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function renderThemeSwatches() {
+  const palette = window.NutcTheme?.palette?.() || [];
+  themeSwatches.replaceChildren();
+
+  for (const color of palette.slice(0, 3)) {
+    const dot = document.createElement("span");
+    dot.className =
+      "h-2.5 w-2.5 rounded-full border border-white/15 shadow-sm";
+    dot.style.backgroundColor = color;
+    themeSwatches.append(dot);
+  }
+
+  clearBackgroundAction.classList.toggle(
+    "hidden",
+    !window.NutcTheme?.hasBackground?.(),
+  );
+}
+
 function setServerStatus(status) {
   const state = status?.status || "error";
   const bridgeActive = Boolean(status?.loginBridge?.active);
 
-  let kind = "invalid";
   let label = "需登入";
   let detail = "Server ePortal 尚未登入";
+  let dotColor = "#f07178";
   let canLogout = false;
 
   if (bridgeActive || state === "busy") {
-    kind = "checking";
     label = "使用中";
     detail = "Server ePortal 正在使用中";
+    dotColor = "var(--accent)";
   } else if (state === "valid") {
-    kind = "valid";
     label = "已連線";
     detail = "Server ePortal 已登入";
+    dotColor = "#7fd5ad";
     canLogout = true;
   } else if (state === "error") {
-    kind = "invalid";
     label = "重試";
     detail = status?.error || "無法檢查 Server ePortal";
   }
 
-  serverStatusDot.className = `status-dot ${kind}`;
+  serverStatusDot.style.backgroundColor = dotColor;
   serverStatusText.textContent = label;
   serverStatusButton.title = detail;
   serverStatusButton.setAttribute("aria-label", detail);
 
-  serverLoginAction.textContent = canLogout ? "重新登入" : "登入";
+  serverLoginAction.querySelector("span").textContent =
+    canLogout ? "重新登入" : "登入";
   serverLogoutAction.classList.toggle("hidden", !canLogout);
 }
 
@@ -66,69 +90,145 @@ function openModule(module) {
   window.location.assign(module.launchPath);
 }
 
+function moduleAccent(index) {
+  const palette = window.NutcTheme?.palette?.() || [
+    "#f0a8c8",
+    "#e8b86d",
+    "#51314a",
+  ];
+
+  return palette[index % Math.max(1, Math.min(3, palette.length))] || "#f0a8c8";
+}
+
 function renderModules(modules) {
+  modulesCache = modules;
   moduleGrid.replaceChildren();
 
-  for (const module of modules) {
+  modules.forEach((module, index) => {
+    const accent = moduleAccent(index);
+    const rgba = window.NutcTheme?.rgba || ((color) => color);
+
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "module-card focus-ring";
-    button.style.setProperty("--module-color", module.sourceColor);
+    button.className =
+      "group relative flex min-h-44 flex-col overflow-hidden rounded-[20px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-200 ease-soft-out hover:-translate-y-0.5 hover:border-white/[.18] hover:bg-white/[.07] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
     button.setAttribute("aria-label", `開啟 ${module.name}`);
 
+    const glow = document.createElement("span");
+    glow.className =
+      "pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full opacity-20 blur-[44px] transition-opacity duration-200 group-hover:opacity-30";
+    glow.style.backgroundColor = accent;
+
     const icon = document.createElement("span");
-    icon.className = "module-icon";
-    icon.innerHTML = icons[module.icon] || icons.route;
+    icon.className =
+      "relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border shadow-sm";
+    icon.style.color = accent;
+    icon.style.backgroundColor = rgba(accent, 0.14);
+    icon.style.borderColor = rgba(accent, 0.42);
+    icon.innerHTML = `<i data-lucide="${module.icon || "route"}" class="h-[21px] w-[21px]"></i>`;
 
     const copy = document.createElement("span");
-    copy.className = "module-copy";
+    copy.className = "relative z-10 mt-auto block pt-8";
 
     const title = document.createElement("h3");
+    title.className = "text-[17px] font-semibold tracking-[-0.025em]";
     title.textContent = module.shortName;
 
     const description = document.createElement("p");
+    description.className =
+      "mt-1.5 text-[13px] font-medium leading-5 text-[var(--muted)]";
     description.textContent = module.description;
 
     const launch = document.createElement("span");
-    launch.className = "module-launch";
-    launch.innerHTML = `<span>開啟</span><span aria-hidden="true">→</span>`;
+    launch.className =
+      "mt-4 flex items-center justify-between text-xs font-semibold text-[var(--faint)]";
+    launch.innerHTML =
+      '<span>開啟</span><i data-lucide="arrow-right" class="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden="true"></i>';
+    launch.lastElementChild.style.color = accent;
 
     copy.append(title, description, launch);
-    button.append(icon, copy);
+    button.append(glow, icon, copy);
     button.addEventListener("click", () => openModule(module));
     moduleGrid.append(button);
-  }
+  });
+
+  renderIcons();
 }
 
 function showLoadError(message) {
   moduleGrid.replaceChildren();
 
   const card = document.createElement("div");
-  card.className = "load-error";
+  card.className =
+    "rounded-[20px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 text-sm font-medium text-[var(--muted)] shadow-sm backdrop-blur-[18px] backdrop-saturate-[170%]";
   card.textContent = message || "校務系統載入失敗。";
   moduleGrid.append(card);
 }
 
 function setServerMenuOpen(open) {
-  serverStatusMenu.classList.toggle("hidden", !open);
   serverStatusButton.setAttribute("aria-expanded", String(open));
+  serverStatusMenu.setAttribute("aria-hidden", String(!open));
+  serverStatusChevron.classList.toggle("rotate-180", open);
+
+  serverStatusMenu.classList.toggle("pointer-events-none", !open);
+  serverStatusMenu.classList.toggle("invisible", !open);
+  serverStatusMenu.classList.toggle("opacity-0", !open);
+  serverStatusMenu.classList.toggle("-translate-y-2", !open);
+  serverStatusMenu.classList.toggle("scale-[.97]", !open);
+
+  serverStatusMenu.classList.toggle("pointer-events-auto", open);
+  serverStatusMenu.classList.toggle("visible", open);
+  serverStatusMenu.classList.toggle("opacity-100", open);
+  serverStatusMenu.classList.toggle("translate-y-0", open);
+  serverStatusMenu.classList.toggle("scale-100", open);
 }
 
 serverStatusButton.addEventListener("click", (event) => {
   event.stopPropagation();
-  const open = serverStatusButton.getAttribute("aria-expanded") === "true";
-  setServerMenuOpen(!open);
+  setServerMenuOpen(
+    serverStatusButton.getAttribute("aria-expanded") !== "true",
+  );
 });
 
 serverLoginAction.addEventListener("click", () => {
   window.location.assign("/server-login/");
 });
 
+backgroundAction.addEventListener("click", () => {
+  backgroundInput.click();
+});
+
+backgroundInput.addEventListener("change", async () => {
+  const file = backgroundInput.files?.[0];
+  backgroundInput.value = "";
+  if (!file) return;
+
+  backgroundAction.disabled = true;
+
+  try {
+    await window.NutcTheme.setBackgroundFile(file);
+    renderThemeSwatches();
+    renderModules(modulesCache);
+    setServerMenuOpen(false);
+  } catch (error) {
+    console.error("Background update failed:", error);
+  } finally {
+    backgroundAction.disabled = false;
+  }
+});
+
+clearBackgroundAction.addEventListener("click", () => {
+  window.NutcTheme.clearBackground();
+  renderThemeSwatches();
+  renderModules(modulesCache);
+  setServerMenuOpen(false);
+});
+
 serverLogoutAction.addEventListener("click", async () => {
   if (serverLogoutAction.disabled) return;
 
   serverLogoutAction.disabled = true;
-  serverLogoutAction.textContent = "登出中…";
+  serverLogoutAction.querySelector("span").textContent = "登出中…";
 
   try {
     const response = await fetch("/api/portal-logout", {
@@ -154,12 +254,12 @@ serverLogoutAction.addEventListener("click", async () => {
     serverStatusButton.title = error.message;
   } finally {
     serverLogoutAction.disabled = false;
-    serverLogoutAction.textContent = "登出";
+    serverLogoutAction.querySelector("span").textContent = "登出";
   }
 });
 
 document.addEventListener("click", (event) => {
-  if (!event.target.closest(".server-menu")) {
+  if (!event.target.closest("#serverMenu")) {
     setServerMenuOpen(false);
   }
 });
@@ -171,7 +271,16 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+window.addEventListener("nutc-theme-change", () => {
+  renderThemeSwatches();
+  if (modulesCache.length) renderModules(modulesCache);
+});
+
 (async () => {
+  await window.NutcTheme.init();
+  renderThemeSwatches();
+  renderIcons();
+
   const results = await Promise.allSettled([
     api("/api/modules"),
     api("/api/portal-status"),
@@ -188,6 +297,9 @@ document.addEventListener("keydown", (event) => {
   if (statusResult.status === "fulfilled") {
     setServerStatus(statusResult.value);
   } else {
-    setServerStatus({ status: "error", error: statusResult.reason?.message });
+    setServerStatus({
+      status: "error",
+      error: statusResult.reason?.message,
+    });
   }
 })();
