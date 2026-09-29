@@ -133,7 +133,9 @@ function sendPostHandoff(res, handoff) {
   <title>Connecting…</title>
 </head>
 <body>
-  <form id="handoff" method="post" action="${escapeHtmlAttribute(target.toString())}">
+  <form id="handoff" method="post" enctype="${escapeHtmlAttribute(
+    handoff.enctype || "application/x-www-form-urlencoded",
+  )}" action="${escapeHtmlAttribute(target.toString())}">
     ${fields}
     <noscript><button type="submit">Continue</button></noscript>
   </form>
