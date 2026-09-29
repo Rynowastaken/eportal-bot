@@ -11,9 +11,14 @@
 
 ```bash
 npm install
-npx playwright install chromium
+npm run install-browser
 npm run doctor
 ```
+
+On Linux, `npm run install-browser` installs both Chromium and the system
+libraries Playwright needs (for example `libnspr4.so`). If Chromium was installed
+without those OS packages, the Dashboard can start normally but the Login Bridge will
+fail when it tries to launch the headless browser.
 
 ## Native server re-login from mobile or desktop
 
