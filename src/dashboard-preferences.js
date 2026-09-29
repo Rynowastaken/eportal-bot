@@ -88,6 +88,10 @@ export class DashboardPreferenceStore {
       updatedAt: null,
     };
     this.writeQueue = Promise.resolve();
+    this.imageCache = {
+      avatar: null,
+      background: null,
+    };
   }
 
   async init() {
@@ -203,12 +207,14 @@ export class DashboardPreferenceStore {
           await fs.writeFile(temp, decoded.buffer, { mode: 0o600 });
           await fs.rename(temp, AVATAR_FILE);
           await fs.chmod(AVATAR_FILE, 0o600).catch(() => {});
+          this.imageCache.avatar = decoded.buffer;
           this.value.account.avatar = {
             contentType: decoded.contentType,
             updatedAt: new Date().toISOString(),
           };
         } else {
           await fs.rm(AVATAR_FILE, { force: true }).catch(() => {});
+          this.imageCache.avatar = null;
           this.value.account.avatar = null;
         }
       }
@@ -240,12 +246,14 @@ export class DashboardPreferenceStore {
         await fs.writeFile(temp, decoded.buffer, { mode: 0o600 });
         await fs.rename(temp, BACKGROUND_FILE);
         await fs.chmod(BACKGROUND_FILE, 0o600).catch(() => {});
+        this.imageCache.background = decoded.buffer;
         this.value.appearance.background = {
           contentType: decoded.contentType,
           updatedAt: new Date().toISOString(),
         };
       } else {
         await fs.rm(BACKGROUND_FILE, { force: true }).catch(() => {});
+        this.imageCache.background = null;
         this.value.appearance.background = null;
       }
 
@@ -258,9 +266,11 @@ export class DashboardPreferenceStore {
 
   async readAvatar() {
     if (!this.value.account.avatar) return null;
+
     try {
+      this.imageCache.avatar ??= await fs.readFile(AVATAR_FILE);
       return {
-        body: await fs.readFile(AVATAR_FILE),
+        body: this.imageCache.avatar,
         contentType: this.value.account.avatar.contentType,
       };
     } catch {
@@ -270,9 +280,11 @@ export class DashboardPreferenceStore {
 
   async readBackground() {
     if (!this.value.appearance.background) return null;
+
     try {
+      this.imageCache.background ??= await fs.readFile(BACKGROUND_FILE);
       return {
-        body: await fs.readFile(BACKGROUND_FILE),
+        body: this.imageCache.background,
         contentType: this.value.appearance.background.contentType,
       };
     } catch {
