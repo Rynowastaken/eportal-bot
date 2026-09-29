@@ -49,7 +49,7 @@
           <div id="serverMenu" class="relative z-50">
           <button
             id="serverStatusButton"
-            class="focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)]"
+            class="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.07] px-2.5 pr-3 text-sm font-semibold text-[var(--foreground)] shadow-sm backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
             type="button"
             aria-label="Server ePortal 登入狀態"
             aria-haspopup="menu"
@@ -57,14 +57,14 @@
           >
             <span
               id="serverStatusIcon"
-              class="grid h-4 w-4 shrink-0 place-items-center text-current opacity-60"
+              class="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
               aria-hidden="true"
             ></span>
-            <span id="serverStatusText">檢查中</span>
+            <span id="serverStatusText" class="tracking-[-0.01em]">檢查中</span>
             <i
               id="serverStatusChevron"
               data-lucide="chevron-down"
-              class="h-4 w-4 opacity-60 transition-transform duration-150"
+              class="ml-0.5 h-4 w-4 text-[var(--muted)] transition-transform duration-150"
               aria-hidden="true"
             ></i>
           </button>
@@ -437,6 +437,6 @@
 
     <script src="/theme.js?v=3"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=33" type="module"></script>
+    <script src="/app.js?v=34" type="module"></script>
   </body>
 </html>
