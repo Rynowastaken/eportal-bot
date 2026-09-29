@@ -115,20 +115,22 @@ async function fetchFreshAbsences() {
       for (const row of rows) {
         if (row === headerRow) continue;
 
-        const cells = [...row.querySelectorAll("td")].map((cell) =>
-          clean(cell.textContent),
-        );
+        const cellElements = [...row.querySelectorAll("td")];
+        const cells = cellElements.map((cell) => clean(cell.textContent));
         if (!cells.length) continue;
 
         const read = (index) => (index >= 0 ? cells[index] || "" : "");
-        const status = read(statusIndex);
-
-        if (!status || /^[-—–]+$/.test(status)) continue;
-
-        const statusLines = status
-          .split(/\n|\r|、|，|;/)
+        const statusCell = statusIndex >= 0 ? cellElements[statusIndex] : null;
+        const statusLines = String(
+          statusCell?.innerText || statusCell?.textContent || "",
+        )
+          .split(/\r?\n|、|，|;/)
           .map(clean)
-          .filter(Boolean);
+          .filter(Boolean)
+          .filter((entry) => !/^[-—–]+$/.test(entry));
+        const status = statusLines.join(" · ");
+
+        if (!status) continue;
 
         items.push({
           className: read(classIndex),
