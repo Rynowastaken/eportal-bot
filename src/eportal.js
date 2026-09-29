@@ -12,7 +12,7 @@ export const MODULES = Object.freeze([
     path: "/?app_id=NUTC_6401",
     sourceColor: "#a742ae",
     icon: "graduation-cap",
-    serverBacked: true,
+    serverHandoff: true,
   },
   {
     id: "webmail",
@@ -23,7 +23,7 @@ export const MODULES = Object.freeze([
     path: "/ext_module/ext_set_param.php?mod_id=_OSL256_lPGpV8f9YqQ8qgA9cyn8QA",
     sourceColor: "#4e7dda",
     icon: "mail",
-    serverBacked: true,
+    serverHandoff: true,
   },
   {
     id: "activity",
@@ -34,7 +34,7 @@ export const MODULES = Object.freeze([
     path: "/ext_module/ext_set_param.php?mod_id=_OSL256_PI9bsUzimpCHrDSTPoMVcQ",
     sourceColor: "#da5e0b",
     icon: "clipboard-check",
-    serverBacked: true,
+    serverHandoff: true,
   },
   {
     id: "ep",
@@ -45,7 +45,7 @@ export const MODULES = Object.freeze([
     path: "/ext_module/ext_set_param.php?mod_id=_OSL256_pmabVqSXTYna294Vl9JLJg",
     sourceColor: "#d75656",
     icon: "route",
-    serverBacked: true,
+    serverHandoff: true,
   },
   {
     id: "tronclass",
@@ -56,7 +56,7 @@ export const MODULES = Object.freeze([
     path: "/ext_module/ext_set_param.php?mod_id=_OSL256_OBbFAusuXIjtGB-G8RS4gQ",
     sourceColor: "#a742ae",
     icon: "book-open-check",
-    serverBacked: true,
+    serverHandoff: true,
   },
 ]);
 
@@ -73,10 +73,6 @@ export function moduleUrl(moduleId) {
 export function publicModules() {
   return MODULES.map(({ path, ...module }) => ({
     ...module,
-    launchPath:
-      module.id === "ais"
-        ? "/student.html"
-        : `/module.html?id=${encodeURIComponent(module.id)}`,
-    officialPath: `/go/${module.id}`,
+    launchPath: `/go/${module.id}`,
   }));
 }
