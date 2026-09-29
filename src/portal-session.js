@@ -785,8 +785,22 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
       timeout,
     });
 
-    // Give ePortal a short window to run any normal page-load refresh logic.
-    await page.waitForTimeout(1500);
+    // Return as soon as the authenticated marker appears or ePortal redirects
+    // away from the dashboard. Keep the old 1.5 s window only as a fallback.
+    await Promise.race([
+      page
+        .locator(STUDENT_BUTTON_SELECTOR)
+        .waitFor({ state: "attached", timeout: 1_500 })
+        .catch(() => {}),
+      page
+        .waitForURL(
+          (url) =>
+            url.hostname !== "eportal.nutc.edu.tw" ||
+            !url.pathname.startsWith("/nutc_dashboard/"),
+          { timeout: 1_500 },
+        )
+        .catch(() => {}),
+    ]);
 
     const current = new URL(page.url());
     const hasStudentButton =
