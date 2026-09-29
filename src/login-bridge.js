@@ -337,6 +337,7 @@ async function buildState() {
   if (await loginComplete(active.page)) {
     active.complete = true;
     active.phase = "complete";
+    active.launchToken = null;
     await closeBrowser(active.browser);
     active.browser = null;
     bridgeLog("login completed; persistent profile saved");
@@ -459,6 +460,7 @@ async function initializeLoginBridge(session) {
     session.phase = "ready";
     bridgeLog("login form bridge is ready", page);
   } catch (error) {
+    session.launchToken = null;
     session.error = {
       message: error?.message || String(error),
       code: error?.code || "EPORTAL_LOGIN_BRIDGE_START_FAILED",
@@ -473,6 +475,24 @@ async function initializeLoginBridge(session) {
 
 export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
   bridgeLog("start requested");
+
+  if (
+    active &&
+    !active.complete &&
+    !active.error &&
+    Date.parse(active.expiresAt) > Date.now() &&
+    active.launchToken
+  ) {
+    bridgeLog(`reusing active login bridge session (${active.phase})`);
+    return {
+      active: true,
+      complete: false,
+      phase: active.phase,
+      expiresAt: active.expiresAt,
+      launchPath: `/server-login/#token=${encodeURIComponent(active.launchToken)}`,
+    };
+  }
+
   await closeActive();
 
   bridgeLog("acquiring persistent profile and launching headless Chromium");
@@ -488,6 +508,7 @@ export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
   const session = {
     browser,
     page,
+    launchToken: token,
     tokenHash: hash(token),
     expiresAt: expiresAt.toISOString(),
     timer: null,
