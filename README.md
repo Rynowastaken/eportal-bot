@@ -97,9 +97,12 @@ CLOUDFLARE_ACCESS_AUD=YOUR_APPLICATION_AUD_TAG
 ```
 
 Only `/login*` should be configured as a public/Bypass path in Cloudflare Access.
-Everything else stays behind the normal Allow policy. See
-[docs/cloudflare-access.md](docs/cloudflare-access.md) for the Tunnel, Access
-application, path override, and verification setup.
+Everything else stays behind the normal Allow policy.
+
+A Cloudflare Tunnel is **not required**. The bundled no-tunnel deployment keeps Node on
+`127.0.0.1:4174`, puts Caddy on public HTTPS/443, and uses a proxied Cloudflare DNS
+record. Ready-to-edit files are in `deploy/no-tunnel/`. See
+[docs/cloudflare-access.md](docs/cloudflare-access.md) for the complete setup.
 
 ## Start Dashboard
 
