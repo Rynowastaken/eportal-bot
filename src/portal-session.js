@@ -236,6 +236,133 @@ function looksSelfContainedGetHandoff(rawUrl) {
     );
 }
 
+
+function decodeHtmlAttribute(value) {
+  return String(value || "")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">");
+}
+
+function htmlAttribute(tag, name) {
+  const escaped = name.replace(/[.*+?^$\{\}()|[\]\\]/g, "\\$&");
+  const match = String(tag).match(
+    new RegExp(
+      `\\b${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+      "i",
+    ),
+  );
+
+  return decodeHtmlAttribute(match?.[1] ?? match?.[2] ?? match?.[3] ?? "");
+}
+
+function htmlNavigationSignals(html, baseUrl) {
+  const title =
+    decodeHtmlAttribute(
+      String(html).match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "",
+    )
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120);
+
+  const forms = [];
+  const formPattern = /<form\b([^>]*)>([\s\S]*?)<\/form>/gi;
+  let formMatch;
+
+  while ((formMatch = formPattern.exec(html)) && forms.length < 6) {
+    const openTag = `<form ${formMatch[1]}>`;
+    const body = formMatch[2] || "";
+    const actionRaw = htmlAttribute(openTag, "action") || baseUrl.toString();
+    const method = (htmlAttribute(openTag, "method") || "GET").toUpperCase();
+    const enctype = (
+      htmlAttribute(openTag, "enctype") ||
+      "application/x-www-form-urlencoded"
+    ).toLowerCase();
+
+    let action;
+    try {
+      action = new URL(actionRaw, baseUrl);
+    } catch {
+      continue;
+    }
+
+    const fields = [];
+    let hasInteractive = false;
+    const inputPattern = /<input\b[^>]*>/gi;
+    let inputMatch;
+
+    while ((inputMatch = inputPattern.exec(body)) && fields.length < 200) {
+      const tag = inputMatch[0];
+      const type = (htmlAttribute(tag, "type") || "text").toLowerCase();
+      const name = htmlAttribute(tag, "name");
+
+      if (!name) continue;
+
+      if (type === "hidden") {
+        fields.push([name, htmlAttribute(tag, "value")]);
+      } else if (!["submit", "button", "reset", "image"].includes(type)) {
+        hasInteractive = true;
+      }
+    }
+
+    forms.push({
+      method,
+      action,
+      enctype,
+      fields,
+      hasInteractive,
+    });
+  }
+
+  let metaRefresh = null;
+  const metaPattern = /<meta\b[^>]*>/gi;
+  for (const tag of String(html).match(metaPattern) || []) {
+    if (htmlAttribute(tag, "http-equiv").toLowerCase() !== "refresh") continue;
+
+    const content = htmlAttribute(tag, "content");
+    const match = content.match(/url\s*=\s*(.+)$/i);
+    if (!match) continue;
+
+    try {
+      metaRefresh = new URL(
+        match[1].trim().replace(/^['"]|['"]$/g, ""),
+        baseUrl,
+      );
+    } catch {
+      // Ignore malformed refresh targets.
+    }
+    break;
+  }
+
+  const scriptTargets = [];
+  const scriptPatterns = [
+    /(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/gi,
+    /(?:window\.)?location\.replace\(\s*["']([^"']+)["']\s*\)/gi,
+    /window\.open\(\s*["']([^"']+)["']/gi,
+  ];
+
+  for (const pattern of scriptPatterns) {
+    let match;
+    while ((match = pattern.exec(html)) && scriptTargets.length < 8) {
+      try {
+        scriptTargets.push(new URL(decodeHtmlAttribute(match[1]), baseUrl));
+      } catch {
+        // Ignore malformed JavaScript URL literals.
+      }
+    }
+  }
+
+  return {
+    title,
+    forms,
+    metaRefresh,
+    scriptTargets,
+  };
+}
+
 async function discoverBareExternalGet(
   context,
   module,
@@ -244,24 +371,58 @@ async function discoverBareExternalGet(
 ) {
   let current = new URL(rawUrl);
   let referer = moduleUrl(module.id);
+  let method = "GET";
+  let fields = [];
   const visited = new Set();
 
-  for (let step = 0; step < 8; step += 1) {
-    if (visited.has(current.toString())) break;
-    visited.add(current.toString());
+  const classifyTarget = (target) => {
+    const external = normalizeExternalHandoffUrl(target, eportalOrigin);
+    if (external) return { kind: "https", url: external };
+    if (isTrustedLegacyHttpTarget(module, target)) {
+      return { kind: "legacy-http", url: target };
+    }
+    if (target.origin === eportalOrigin) {
+      return { kind: "eportal", url: target };
+    }
+    return { kind: "unsupported", url: target };
+  };
 
-    const response = await context.request.get(current.toString(), {
+  const continueWith = (target, nextMethod = "GET", nextFields = []) => {
+    referer = current.toString();
+    current = new URL(target);
+    method = nextMethod;
+    fields = nextFields;
+  };
+
+  for (let step = 0; step < 12; step += 1) {
+    const visitKey = `${method} ${current.toString()}`;
+    if (visited.has(visitKey)) break;
+    visited.add(visitKey);
+
+    const common = {
       maxRedirects: 0,
       failOnStatusCode: false,
       timeout: 12_000,
       headers: {
         Referer: referer,
       },
-    });
+    };
+
+    const response =
+      method === "POST"
+        ? await context.request.post(current.toString(), {
+            ...common,
+            data: new URLSearchParams(fields).toString(),
+            headers: {
+              ...common.headers,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+          })
+        : await context.request.get(current.toString(), common);
 
     const status = response.status();
     console.log(
-      `[handoff] follow bare ${module.id}: ${status} ${safeUrlLabel(current)}`,
+      `[handoff] follow bare ${module.id}: ${method} ${status} ${safeUrlLabel(current)}`,
     );
 
     if ([301, 302, 303, 307, 308].includes(status)) {
@@ -275,55 +436,179 @@ async function discoverBareExternalGet(
         break;
       }
 
-      if (next.origin !== eportalOrigin) {
-        const external = normalizeExternalHandoffUrl(next, eportalOrigin);
+      const preserveMethod = status === 307 || status === 308;
+      const nextMethod = preserveMethod ? method : "GET";
+      const nextFields = preserveMethod ? fields : [];
+      const classified = classifyTarget(next);
 
-        if (!external && isTrustedLegacyHttpTarget(module, next)) {
+      if (classified.kind === "https") {
+        if (nextMethod === "POST") {
           console.log(
-            `[handoff] following trusted legacy HTTP redirect for ${module.id}: ${next.hostname}${next.pathname}`,
-          );
-          referer = current.toString();
-          current = next;
-          continue;
-        }
-
-        if (!external) break;
-
-        if (looksSelfContainedGetHandoff(external)) {
-          console.log(
-            `[handoff] discovered transferable redirect for ${module.id}: GET ${external.hostname}${external.pathname}`,
+            `[handoff] discovered transferable POST redirect for ${module.id}: ${classified.url.hostname}${classified.url.pathname}`,
           );
           return {
-            type: "get",
-            url: external.toString(),
+            type: "post",
+            url: classified.url.toString(),
+            fields: nextFields,
+            enctype: "application/x-www-form-urlencoded",
           };
         }
 
-        referer = current.toString();
-        current = external;
+        if (looksSelfContainedGetHandoff(classified.url)) {
+          console.log(
+            `[handoff] discovered transferable redirect for ${module.id}: GET ${classified.url.hostname}${classified.url.pathname}`,
+          );
+          return {
+            type: "get",
+            url: classified.url.toString(),
+          };
+        }
+      }
+
+      if (
+        classified.kind === "https" ||
+        classified.kind === "legacy-http" ||
+        classified.kind === "eportal"
+      ) {
+        if (classified.kind === "legacy-http") {
+          console.log(
+            `[handoff] following trusted legacy HTTP redirect for ${module.id}: ${classified.url.hostname}${classified.url.pathname}`,
+          );
+        }
+
+        continueWith(classified.url, nextMethod, nextFields);
         continue;
       }
 
-      referer = current.toString();
-      current = next;
-      continue;
+      break;
     }
 
     const headers = response.headers();
     const contentType = String(headers["content-type"] || "").toLowerCase();
     const contentLength = Number(headers["content-length"] || 0);
+    let htmlSignals = null;
 
     if (
       contentType.includes("text/html") &&
-      (!Number.isFinite(contentLength) ||
-        contentLength <= 512 * 1024)
+      (!Number.isFinite(contentLength) || contentLength <= 512 * 1024)
     ) {
       try {
         const html = await response.text();
-        const matches =
+        htmlSignals = htmlNavigationSignals(html, current);
+
+        const navigationTargets = [
+          htmlSignals.metaRefresh,
+          ...htmlSignals.scriptTargets,
+        ].filter(Boolean);
+
+        for (const candidate of navigationTargets) {
+          const classified = classifyTarget(candidate);
+
+          if (
+            classified.kind === "https" &&
+            looksSelfContainedGetHandoff(classified.url)
+          ) {
+            console.log(
+              `[handoff] discovered transferable HTML navigation for ${module.id}: GET ${classified.url.hostname}${classified.url.pathname}`,
+            );
+            return {
+              type: "get",
+              url: classified.url.toString(),
+            };
+          }
+
+          if (
+            classified.kind === "https" ||
+            classified.kind === "legacy-http" ||
+            classified.kind === "eportal"
+          ) {
+            console.log(
+              `[handoff] following HTML navigation for ${module.id}: GET ${classified.url.hostname}${classified.url.pathname}`,
+            );
+            continueWith(classified.url, "GET", []);
+            break;
+          }
+        }
+
+        if (referer === current.toString()) {
+          continue;
+        }
+
+        const autoForms = htmlSignals.forms.filter(
+          (form) =>
+            !form.hasInteractive &&
+            ["GET", "POST"].includes(form.method) &&
+            form.enctype === "application/x-www-form-urlencoded",
+        );
+
+        if (autoForms.length === 1) {
+          const form = autoForms[0];
+          const classified = classifyTarget(form.action);
+
+          if (form.method === "GET") {
+            const target = new URL(form.action);
+            for (const [name, value] of form.fields) {
+              target.searchParams.append(name, value);
+            }
+
+            const getTarget = classifyTarget(target);
+
+            if (
+              getTarget.kind === "https" &&
+              looksSelfContainedGetHandoff(getTarget.url)
+            ) {
+              console.log(
+                `[handoff] discovered transferable HTML form for ${module.id}: GET ${getTarget.url.hostname}${getTarget.url.pathname}`,
+              );
+              return {
+                type: "get",
+                url: getTarget.url.toString(),
+              };
+            }
+
+            if (
+              getTarget.kind === "https" ||
+              getTarget.kind === "legacy-http" ||
+              getTarget.kind === "eportal"
+            ) {
+              console.log(
+                `[handoff] following hidden GET form for ${module.id}: ${getTarget.url.hostname}${getTarget.url.pathname}`,
+              );
+              continueWith(getTarget.url, "GET", []);
+              continue;
+            }
+          }
+
+          if (form.method === "POST") {
+            if (classified.kind === "https") {
+              console.log(
+                `[handoff] discovered transferable HTML form for ${module.id}: POST ${classified.url.hostname}${classified.url.pathname}`,
+              );
+              return {
+                type: "post",
+                url: classified.url.toString(),
+                fields: form.fields,
+                enctype: "application/x-www-form-urlencoded",
+              };
+            }
+
+            if (
+              classified.kind === "legacy-http" ||
+              classified.kind === "eportal"
+            ) {
+              console.log(
+                `[handoff] following hidden POST form for ${module.id}: ${classified.url.hostname}${classified.url.pathname}; fields=${form.fields.map(([name]) => name).join(",") || "none"}`,
+              );
+              continueWith(classified.url, "POST", form.fields);
+              continue;
+            }
+          }
+        }
+
+        const absoluteMatches =
           html.match(/https?:\/\/[^"'<>\s]+/gi) || [];
 
-        for (const rawCandidate of matches.slice(0, 80)) {
+        for (const rawCandidate of absoluteMatches.slice(0, 80)) {
           let candidate;
           try {
             candidate = new URL(rawCandidate.replaceAll("&amp;", "&"));
@@ -336,10 +621,7 @@ async function discoverBareExternalGet(
             eportalOrigin,
           );
 
-          if (
-            external &&
-            looksSelfContainedGetHandoff(external)
-          ) {
+          if (external && looksSelfContainedGetHandoff(external)) {
             console.log(
               `[handoff] discovered transferable URL in target HTML for ${module.id}: GET ${external.hostname}${external.pathname}`,
             );
@@ -349,8 +631,9 @@ async function discoverBareExternalGet(
             };
           }
         }
-      } catch {
-        // Body inspection is best effort; redirect-chain analysis is primary.
+      } catch (error) {
+        if (error?.code?.startsWith("EPORTAL_HANDOFF_")) throw error;
+        htmlSignals = null;
       }
     }
 
@@ -360,6 +643,8 @@ async function discoverBareExternalGet(
           .map((cookie) => cookie.domain)
           .filter(
             (domain) =>
+              domain === current.hostname ||
+              domain === `.${current.hostname}` ||
               domain === "nutc.edu.tw" ||
               domain === ".nutc.edu.tw" ||
               domain.endsWith(".nutc.edu.tw"),
@@ -367,25 +652,43 @@ async function discoverBareExternalGet(
       ),
     ].sort();
 
+    const formSummary =
+      htmlSignals?.forms
+        ?.map(
+          (form) =>
+            `${form.method} ${safeUrlLabel(form.action)} [${form.fields.map(([name]) => name).join(",")}]${form.hasInteractive ? " interactive" : ""}`,
+        )
+        .join("; ") || "none";
+    const navSummary = [
+      htmlSignals?.metaRefresh,
+      ...(htmlSignals?.scriptTargets || []),
+    ]
+      .filter(Boolean)
+      .map((target) => safeUrlLabel(target))
+      .join(",") || "none";
+
     const error = new Error(
-      `ePortal reached ${safeUrlLabel(current)} without exposing a transferable SSO URL or form. The captured bare GET is bound to the server-side browser/session flow, so redirecting that URL to the client does not carry authentication.`,
+      `ePortal reached ${safeUrlLabel(current)} without exposing a transferable SSO URL or form. The captured flow is bound to the server-side browser/session, so redirecting the bare endpoint to the client does not carry authentication.`,
     );
     error.code = "EPORTAL_HANDOFF_SESSION_BOUND";
     error.diagnostics = {
       final: safeUrlLabel(current),
       status,
+      title: htmlSignals?.title || "",
+      forms: formSummary,
+      navigationTargets: navSummary,
       cookieScopes,
     };
 
     console.log(
-      `[handoff] bare GET for ${module.id} is not transferable; final=${error.diagnostics.final}; status=${status}; cookie-scopes=${cookieScopes.join(",") || "none"}`,
+      `[handoff] session-bound ${module.id}; final=${error.diagnostics.final}; status=${status}; title=${JSON.stringify(error.diagnostics.title)}; forms=${formSummary}; nav=${navSummary}; cookie-scopes=${cookieScopes.join(",") || "none"}`,
     );
 
     throw error;
   }
 
   const error = new Error(
-    "ePortal produced a bare external GET handoff, but no transferable SSO material was found in its redirect chain.",
+    "ePortal produced a legacy external handoff, but no transferable SSO material was found after following its redirect/form flow.",
   );
   error.code = "EPORTAL_HANDOFF_SESSION_BOUND";
   throw error;
