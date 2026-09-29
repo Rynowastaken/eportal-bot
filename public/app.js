@@ -91,7 +91,7 @@ function setServerPortalStatus(status) {
   if (status?.status === "valid") {
     serverPortalStatusTitle.textContent = "Server 背景 ePortal 已登入";
     serverPortalStatusDetail.textContent =
-      "只供背景工作 / 排程使用；不會讓目前瀏覽器自動登入 ePortal。";
+      "供 Dashboard 模組頁面、背景工作與排程使用；不會把 school cookies 傳給目前瀏覽器。";
     return;
   }
 
