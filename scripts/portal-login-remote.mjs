@@ -11,9 +11,7 @@ import { loginServerPortal } from "../src/portal-session.js";
 
 const display = process.env.EPORTAL_REMOTE_DISPLAY || ":100";
 const port = Number(process.env.EPORTAL_REMOTE_PORT || 14500);
-const bandwidthKbps = Number(
-  process.env.EPORTAL_REMOTE_BANDWIDTH_KBPS || 512,
-);
+const bandwidthKbps = 128;
 const ttlMinutes = Number(process.env.EPORTAL_REMOTE_TTL_MINUTES || 30);
 const dashboardUrl = String(process.env.DASHBOARD_URL || "").replace(/\/+$/, "");
 
@@ -113,7 +111,7 @@ try {
 
   console.log("[+] Starting temporary Xpra HTML5 session...");
   console.log(
-    `[+] Bandwidth budget: ${Math.max(128, bandwidthKbps)} kbps (HTML5 client).`,
+    `[+] Bandwidth budget: ${bandwidthKbps} kbps (fixed low-data mode).`,
   );
 
   xpraProcess = spawn("xpra", xpraArgs, {
