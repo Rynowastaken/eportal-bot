@@ -119,13 +119,27 @@ The visual language follows the Budget app's dark glass system:
 - compact menu tiles with Lucide icons,
 - restrained shadows and short lift-on-hover transitions.
 
-The Dashboard menu also includes **背景圖片**. The selected image is compressed and
-stored in the current browser only. A five-color palette is sampled from the image
-using the same OKLab/OKLCH-style extraction approach as the Budget app, then converted
-into a Tonal Spot palette for buttons, focus rings, icons, and card accents. The same
-theme automatically carries into `/server-login/` in that browser.
+The Dashboard menu also includes **背景圖片**. The selected image is compressed in the
+browser and then stored on the Portal server under `data/`. A five-color palette is
+sampled from the image using the same OKLab/OKLCH-style extraction approach as the
+Budget app, then converted into a Tonal Spot palette for buttons, focus rings, icons,
+and card accents. Because the image is server-backed, the same background is available
+to the Dashboard, launch screen, and `/server-login/` across devices.
 
 Removing the background restores the default rose/gold palette.
+
+## Dashboard profile storage
+
+The custom Dashboard username, account picture, and background are server-backed.
+Metadata is stored in `data/dashboard-preferences.json`; the processed account picture
+and background are stored as private files in `data/`. Where supported, these files
+use owner-only permissions.
+
+Existing browser-local username, account picture, and background values from older
+versions are migrated automatically when that browser first loads the upgraded
+Dashboard. The old local username/avatar/background values are removed after a
+successful server migration. Color scheme, Colorfulness, and Brightness remain
+browser-local preferences.
 
 ## Debug restart
 
