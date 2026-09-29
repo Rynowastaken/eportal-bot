@@ -72,6 +72,7 @@ async function fetchFreshSchedule() {
       () =>
         typeof globalThis.g_ClsTime === "object" &&
         globalThis.g_ClsTime !== null,
+      null,
       { timeout: 12_000 },
     );
 
