@@ -5,7 +5,12 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
-import { checkServerPortalStatus, createModuleHandoff } from "./src/portal-session.js";
+import {
+  checkServerPortalStatus,
+  createModuleHandoff,
+  getPortalKeepaliveState,
+  startPortalKeepalive,
+} from "./src/portal-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +19,7 @@ const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
 const preferenceStore = new PreferenceStore();
+const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -125,7 +131,10 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/portal-status") {
       const status = await checkServerPortalStatus();
-      sendJson(res, 200, status);
+      sendJson(res, 200, {
+        ...status,
+        keepalive: getPortalKeepaliveState(),
+      });
       return;
     }
 
@@ -192,10 +201,16 @@ const server = http.createServer(async (req, res) => {
 });
 
 await preferenceStore.init();
+const keepalive = startPortalKeepalive({ intervalMinutes: keepaliveMinutes });
 
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
   console.log("Dashboard authentication: delegated to Cloudflare Access.");
   console.log("Server ePortal session: persistent Playwright profile at .eportal-profile/");
   console.log("Client ePortal session: optional userscript/browser convenience path.");
+  console.log(
+    keepalive.enabled
+      ? `ePortal keepalive: every ${keepalive.intervalMinutes} minute(s).`
+      : "ePortal keepalive: disabled.",
+  );
 });
