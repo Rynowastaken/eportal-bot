@@ -43,6 +43,7 @@ let restartScheduled = false;
 const preferenceStore = new PreferenceStore();
 const dashboardPreferenceStore = new DashboardPreferenceStore();
 const launchJobs = new Map();
+const staticAssetCache = new Map();
 const launchJobTtlMs = 2 * 60_000;
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
 const loginBridgeTtlMinutes = Number(
@@ -206,7 +207,32 @@ function contentType(filePath) {
   }
 }
 
-async function serveStatic(res, pathname) {
+async function loadStaticAsset(resolved, relative) {
+  const cached = staticAssetCache.get(resolved);
+  if (cached) return cached;
+
+  const body = await fsp.readFile(resolved);
+  const extension = path.extname(resolved).toLowerCase();
+  const asset = {
+    body,
+    contentType: contentType(resolved),
+    cacheControl:
+      extension === ".html"
+        ? "no-cache"
+        : relative.startsWith("vendor/")
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=300",
+    etag:
+      '"' +
+      crypto.createHash("sha256").update(body).digest("base64url").slice(0, 22) +
+      '"',
+  };
+
+  staticAssetCache.set(resolved, asset);
+  return asset;
+}
+
+async function serveStatic(req, res, pathname) {
   const relative =
     pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const resolved = path.resolve(publicDir, relative);
@@ -220,23 +246,28 @@ async function serveStatic(res, pathname) {
   }
 
   try {
-    const stat = await fsp.stat(resolved);
-    if (!stat.isFile()) throw new Error("Not a file");
-
-    const body = await fsp.readFile(resolved);
-    res.writeHead(200, {
-      "Content-Type": contentType(resolved),
-      "Content-Length": body.length,
-      "Cache-Control":
-        path.extname(resolved).toLowerCase() === ".html"
-          ? "no-cache"
-          : "public, max-age=300",
+    const asset = await loadStaticAsset(resolved, relative);
+    const headers = {
+      "Content-Type": asset.contentType,
+      "Content-Length": asset.body.length,
+      "Cache-Control": asset.cacheControl,
+      ETag: asset.etag,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "Content-Security-Policy":
         "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
-    });
-    res.end(body);
+    };
+
+    if (req.headers["if-none-match"] === asset.etag) {
+      delete headers["Content-Length"];
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+
+    res.writeHead(200, headers);
+    if (req.method === "HEAD") res.end();
+    else res.end(asset.body);
   } catch {
     sendError(res, 404, "Not found.");
   }
@@ -484,7 +515,7 @@ const server = http.createServer(async (req, res) => {
       req.method === "GET" &&
       (url.pathname === "/login" || url.pathname === "/login/")
     ) {
-      await serveStatic(res, "/access-login.html");
+      await serveStatic(req, res, "/access-login.html");
       return;
     }
 
@@ -869,7 +900,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      await serveStatic(res, "/launch.html");
+      await serveStatic(req, res, "/launch.html");
       return;
     }
 
@@ -883,11 +914,11 @@ const server = http.createServer(async (req, res) => {
       (url.pathname === "/server-login" ||
         url.pathname === "/server-login/")
     ) {
-      await serveStatic(res, "/server-login.html");
+      await serveStatic(req, res, "/server-login.html");
       return;
     }
 
-    await serveStatic(res, url.pathname);
+    await serveStatic(req, res, url.pathname);
   } catch (error) {
     console.error("Request failed:", error?.message || error);
 
