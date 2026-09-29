@@ -17,6 +17,15 @@ export const EPORTAL_PROFILE_DIR = path.join(ROOT, ".eportal-profile");
 export const STUDENT_BUTTON_SELECTOR = 'button[onclick*="NUTC_6401"]';
 
 let profileQueue = Promise.resolve();
+let keepaliveTimer = null;
+let keepaliveState = {
+  enabled: false,
+  intervalMinutes: null,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastStatus: "idle",
+  lastError: null,
+};
 
 async function withProfileLock(task) {
   const previous = profileQueue;
@@ -79,7 +88,7 @@ export async function loginServerPortal() {
   }
 }
 
-export async function checkServerPortalStatus({ timeout = 30_000 } = {}) {
+async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
   if (!(await profileExists())) {
     return {
       status: "not-configured",
@@ -100,6 +109,9 @@ export async function checkServerPortalStatus({ timeout = 30_000 } = {}) {
       waitUntil: "domcontentloaded",
       timeout,
     });
+
+    // Give ePortal a short window to run any normal page-load refresh logic.
+    await page.waitForTimeout(1500);
 
     const current = new URL(page.url());
     const hasStudentButton =
@@ -130,6 +142,67 @@ export async function checkServerPortalStatus({ timeout = 30_000 } = {}) {
   } finally {
     if (context) await context.close().catch(() => {});
   }
+}
+
+export async function checkServerPortalStatus(options = {}) {
+  return withProfileLock(() => inspectServerPortalSession(options));
+}
+
+export function getPortalKeepaliveState() {
+  return structuredClone(keepaliveState);
+}
+
+export function startPortalKeepalive({ intervalMinutes = 10 } = {}) {
+  const parsed = Number(intervalMinutes);
+  const minutes = Number.isFinite(parsed) ? Math.max(0, parsed) : 10;
+
+  if (keepaliveTimer) {
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  }
+
+  keepaliveState = {
+    enabled: minutes > 0,
+    intervalMinutes: minutes,
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    lastStatus: minutes > 0 ? "scheduled" : "disabled",
+    lastError: null,
+  };
+
+  if (minutes <= 0) {
+    return getPortalKeepaliveState();
+  }
+
+  const run = async () => {
+    keepaliveState.lastAttemptAt = new Date().toISOString();
+
+    try {
+      const status = await checkServerPortalStatus({ timeout: 30_000 });
+      keepaliveState.lastStatus = status.status;
+      keepaliveState.lastError = status.error || null;
+
+      if (status.valid) {
+        keepaliveState.lastSuccessAt = status.checkedAt;
+      }
+    } catch (error) {
+      keepaliveState.lastStatus = "error";
+      keepaliveState.lastError = error?.message || String(error);
+    }
+  };
+
+  // Refresh shortly after startup, then on the configured cadence.
+  const initialTimer = setTimeout(() => {
+    void run();
+  }, 15_000);
+  initialTimer.unref?.();
+
+  keepaliveTimer = setInterval(() => {
+    void run();
+  }, minutes * 60_000);
+  keepaliveTimer.unref?.();
+
+  return getPortalKeepaliveState();
 }
 
 export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
@@ -215,41 +288,43 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 }
 
 export async function openAisWithServerSession({ headless = true } = {}) {
-  const context = await openServerPortalSession({ headless });
-  const page = context.pages()[0] || (await context.newPage());
+  return withProfileLock(async () => {
+    const context = await openServerPortalSession({ headless });
+    const page = context.pages()[0] || (await context.newPage());
 
-  try {
-    await page.goto(EPORTAL_DASHBOARD, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    try {
+      await page.goto(EPORTAL_DASHBOARD, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
 
-    const loggedIn =
-      (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+      const loggedIn =
+        (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
-    if (!loggedIn) {
-      const error = new Error(
-        "Server ePortal session expired. Run: npm run login",
+      if (!loggedIn) {
+        const error = new Error(
+          "Server ePortal session expired. Run: npm run login",
+        );
+        error.code = "EPORTAL_LOGIN_REQUIRED";
+        throw error;
+      }
+
+      await page.goto(moduleUrl("ais"), {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+
+      await page.waitForURL(
+        (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
+        { timeout: 20_000 },
       );
-      error.code = "EPORTAL_LOGIN_REQUIRED";
+
+      return { context, page };
+    } catch (error) {
+      await context.close().catch(() => {});
       throw error;
     }
-
-    await page.goto(moduleUrl("ais"), {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
-
-    await page.waitForURL(
-      (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
-      { timeout: 20_000 },
-    );
-
-    return { context, page };
-  } catch (error) {
-    await context.close().catch(() => {});
-    throw error;
-  }
+  });
 }
 
 export async function requireServerPortalSession() {
