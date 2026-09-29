@@ -858,7 +858,7 @@ function renderScheduleDay({ animate = false } = {}) {
   scheduleContent.replaceChildren();
 
   if (!blocks.length) {
-    setScheduleMessage("今天沒有排定課程。");
+    setScheduleMessage("這天沒有排定課程。");
     return;
   }
 
