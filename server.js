@@ -20,6 +20,7 @@ import {
   startLoginBridge,
   stopLoginBridge,
 } from "./src/login-bridge.js";
+import { DashboardPreferenceStore } from "./src/dashboard-preferences.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import {
   checkServerPortalStatus,
@@ -39,6 +40,7 @@ const serverInstanceId =
 const serverStartedAt = Date.now();
 let restartScheduled = false;
 const preferenceStore = new PreferenceStore();
+const dashboardPreferenceStore = new DashboardPreferenceStore();
 const launchJobs = new Map();
 const launchJobTtlMs = 2 * 60_000;
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
@@ -74,6 +76,17 @@ function sendPng(res, body) {
     "X-Content-Type-Options": "nosniff",
   });
   res.end(body);
+}
+
+function sendBinaryImage(res, image) {
+  res.writeHead(200, {
+    "Content-Type": image.contentType,
+    "Content-Length": image.body.length,
+    "Cache-Control": "private, max-age=300",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.end(image.body);
 }
 
 async function readJsonBody(req, limit = 64 * 1024) {
@@ -634,6 +647,63 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/preferences") {
+      sendJson(res, 200, dashboardPreferenceStore.get());
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname === "/api/preferences/account"
+    ) {
+      const body = await readJsonBody(req, 3 * 1024 * 1024);
+      const saved = await dashboardPreferenceStore.setAccount(body);
+      sendJson(res, 200, {
+        ok: true,
+        ...saved,
+      });
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname === "/api/preferences/background"
+    ) {
+      const body = await readJsonBody(req, 9 * 1024 * 1024);
+      const saved = await dashboardPreferenceStore.setBackground(body);
+      sendJson(res, 200, {
+        ok: true,
+        ...saved,
+      });
+      return;
+    }
+
+    if (
+      req.method === "GET" &&
+      url.pathname === "/api/preferences/avatar"
+    ) {
+      const image = await dashboardPreferenceStore.readAvatar();
+      if (!image) {
+        sendError(res, 404, "Account picture not configured.");
+        return;
+      }
+      sendBinaryImage(res, image);
+      return;
+    }
+
+    if (
+      req.method === "GET" &&
+      url.pathname === "/api/preferences/background"
+    ) {
+      const image = await dashboardPreferenceStore.readBackground();
+      if (!image) {
+        sendError(res, 404, "Background not configured.");
+        return;
+      }
+      sendBinaryImage(res, image);
+      return;
+    }
+
     const launchStartMatch =
       req.method === "POST" &&
       url.pathname.match(/^\/api\/launch\/([a-z0-9-]+)$/);
@@ -771,7 +841,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await preferenceStore.init();
+await Promise.all([
+  preferenceStore.init(),
+  dashboardPreferenceStore.init(),
+]);
 const keepalive = startPortalKeepalive({
   intervalMinutes: keepaliveMinutes,
 });
