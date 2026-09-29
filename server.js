@@ -152,6 +152,9 @@ async function proxyRemoteLoginHttp(req, res, url) {
     (proxyRes) => {
       const headers = { ...proxyRes.headers };
       delete headers["set-cookie"];
+      delete headers["x-frame-options"];
+      headers["cache-control"] = "no-store, private";
+      headers["referrer-policy"] = "no-referrer";
 
       if (typeof headers.location === "string" && headers.location.startsWith("/")) {
         headers.location = `/remote-login/xpra${headers.location}`;
@@ -316,6 +319,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/remote-login/status") {
+      const authorized = await isRemoteLoginRequestAuthorized(req);
+      sendJson(res, 200, await getRemoteLoginStatus({ authorized }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/remote-login/status.json") {
       const authorized = await isRemoteLoginRequestAuthorized(req);
       sendJson(res, 200, await getRemoteLoginStatus({ authorized }));
       return;
