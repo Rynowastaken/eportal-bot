@@ -167,6 +167,38 @@ Dashboard. The old local username/avatar/background values are removed after a
 successful server migration. Color scheme, Colorfulness, and Brightness remain
 browser-local preferences.
 
+## Dashboard class schedule
+
+The Dashboard includes a weekly class schedule loaded from the authenticated NUTC AIS
+student system. After the normal Server ePortal status check succeeds, the server opens
+AIS with the same persistent Playwright profile and reads:
+
+```text
+https://ais.nutc.edu.tw/student/courses/my_week_time.aspx
+```
+
+AIS exposes the weekly timetable in its `g_ClsTime` page data. The server normalizes
+that data into 14 periods across Monday through Sunday and returns it from:
+
+```text
+GET /api/class-schedule
+```
+
+The result is cached for five minutes so normal Dashboard reloads do not launch
+Chromium repeatedly. A manual Dashboard refresh uses:
+
+```text
+GET /api/class-schedule?refresh=1
+```
+
+to request a fresh AIS read. If AIS has a temporary loading/network failure, the last
+cached timetable can remain visible and is marked as stale. The cache is cleared when
+the Server ePortal session is logged out, restarted, or a new login bridge is started.
+
+The Dashboard defaults to the current weekday in the `Asia/Taipei` timezone and merges
+adjacent periods that contain the same course, room, and teacher into a single class
+card.
+
 ## Debug restart
 
 The appearance settings include a Debug section with a **Restart** action. By default,
