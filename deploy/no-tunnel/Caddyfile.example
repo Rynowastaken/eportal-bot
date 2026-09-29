@@ -22,7 +22,6 @@ portal.example.com {
     }
 
     log {
-        output file /var/log/caddy/eportal-access.log
         format console
     }
 }
