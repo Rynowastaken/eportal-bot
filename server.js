@@ -33,7 +33,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
 const host = process.env.HOST || "0.0.0.0";
-const port = Number(process.env.PORT || 4173);
+const port = Number(process.env.PORT || 4174);
 const serverInstanceId =
   crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex");
 const serverStartedAt = Date.now();
