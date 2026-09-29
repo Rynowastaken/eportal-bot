@@ -1411,9 +1411,17 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
           waitUntil: "commit",
           timeout: 10_000,
           referer: EPORTAL_DASHBOARD,
-        }).catch((error) => {
-          // An intercepted external navigation is expected to abort goto().
-          if (!settled) throw error;
+        }).catch(() => {
+          // Request-stage interception intentionally aborts external document
+          // navigations while we inspect the handoff server-side. That abort can
+          // race ahead of discoverBareExternalGet(), so do not convert it into a
+          // launch failure here. The handoff promise (or its timeout) is the
+          // authoritative result.
+          if (!settled) {
+            console.log(
+              `[handoff] launcher navigation interrupted for ${module.id}; waiting for handoff discovery`,
+            );
+          }
         });
 
         setTimeout(() => {
