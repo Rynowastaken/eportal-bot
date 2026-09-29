@@ -31,19 +31,9 @@ server. It prints a temporary URL under `/remote-login/`.
 The remote page is responsive: on phones it collapses the controls and dedicates most
 of the dynamic viewport to Chromium; on desktop it expands into a wide centered viewer.
 
-Bandwidth presets are available in the page:
-
-```text
-256 kbps  low-data
-512 kbps  default
-1 Mbps    smoother
-```
-
-You can also choose the default from SSH:
-
-```bash
-EPORTAL_REMOTE_BANDWIDTH_KBPS=256 npm run login:remote
-```
+Remote Login is fixed to a **128 kbps bandwidth budget** for the lowest practical
+data usage. There is no quality/bandwidth selector to accidentally raise usage.
+Xpra's HTML5 client receives `bandwidth_limit=128000` automatically.
 
 Other useful settings:
 
