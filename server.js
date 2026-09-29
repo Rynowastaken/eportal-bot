@@ -1,18 +1,18 @@
 import fsp from "node:fs/promises";
 import http from "node:http";
-import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, publicModules } from "./src/eportal.js";
-import { PreferenceStore } from "./src/preference-store.js";
 import {
-  REMOTE_LOGIN_COOKIE,
-  getRemoteLoginStatus,
-  isRemoteLoginRequestAuthorized,
-  readRemoteLoginState,
-  validateRemoteLoginToken,
-} from "./src/remote-login.js";
+  applyLoginBridgeAction,
+  getLoginBridgeImage,
+  getLoginBridgeState,
+  getLoginBridgeSummary,
+  startLoginBridge,
+  stopLoginBridge,
+} from "./src/login-bridge.js";
+import { PreferenceStore } from "./src/preference-store.js";
 import {
   checkServerPortalStatus,
   createModuleHandoff,
@@ -28,6 +28,9 @@ const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
 const preferenceStore = new PreferenceStore();
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
+const loginBridgeTtlMinutes = Number(
+  process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES ?? 15,
+);
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -35,13 +38,28 @@ function sendJson(res, status, body) {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": payload.length,
     "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   });
   res.end(payload);
 }
 
-function sendError(res, status, message) {
-  sendJson(res, status, { error: message });
+function sendError(res, status, message, code) {
+  sendJson(res, status, {
+    error: message,
+    ...(code ? { code } : {}),
+  });
+}
+
+function sendPng(res, body) {
+  res.writeHead(200, {
+    "Content-Type": "image/png",
+    "Content-Length": body.length,
+    "Cache-Control": "no-store, private",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.end(body);
 }
 
 async function readJsonBody(req, limit = 64 * 1024) {
@@ -51,7 +69,9 @@ async function readJsonBody(req, limit = 64 * 1024) {
   for await (const chunk of req) {
     total += chunk.length;
     if (total > limit) {
-      throw Object.assign(new Error("Request body is too large."), { statusCode: 413 });
+      throw Object.assign(new Error("Request body is too large."), {
+        statusCode: 413,
+      });
     }
     chunks.push(chunk);
   }
@@ -61,8 +81,16 @@ async function readJsonBody(req, limit = 64 * 1024) {
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw Object.assign(new Error("Invalid JSON body."), { statusCode: 400 });
+    throw Object.assign(new Error("Invalid JSON body."), {
+      statusCode: 400,
+    });
   }
+}
+
+function bearerToken(req) {
+  const value = String(req.headers.authorization || "");
+  const match = value.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : "";
 }
 
 function redirect(res, location) {
@@ -75,178 +103,6 @@ function redirect(res, location) {
     "X-Content-Type-Options": "nosniff",
   });
   res.end();
-}
-
-function requestIsSecure(req) {
-  const forwarded = String(req.headers["x-forwarded-proto"] || "")
-    .split(",")[0]
-    .trim()
-    .toLowerCase();
-
-  return forwarded === "https" || Boolean(req.socket.encrypted);
-}
-
-function setRemoteLoginCookie(req, res, token, expiresAt) {
-  const maxAge = Math.max(
-    0,
-    Math.floor((Date.parse(expiresAt) - Date.now()) / 1000),
-  );
-  const secure = requestIsSecure(req) ? "; Secure" : "";
-
-  res.setHeader(
-    "Set-Cookie",
-    `${REMOTE_LOGIN_COOKIE}=${encodeURIComponent(token)}; Path=/remote-login/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`,
-  );
-}
-
-function remoteLoginTargetPath(url) {
-  const prefix = "/remote-login/xpra";
-  let pathname = url.pathname.slice(prefix.length);
-  if (!pathname) pathname = "/";
-  if (!pathname.startsWith("/")) pathname = `/${pathname}`;
-  return `${pathname}${url.search}`;
-}
-
-function safeProxyRequestHeaders(req, state) {
-  const allowed = [
-    "accept",
-    "accept-encoding",
-    "accept-language",
-    "cache-control",
-    "pragma",
-    "user-agent",
-  ];
-  const headers = {
-    Host: `127.0.0.1:${state.port}`,
-    "X-Forwarded-Prefix": "/remote-login/xpra",
-  };
-
-  for (const name of allowed) {
-    const value = req.headers[name];
-    if (value !== undefined) headers[name] = value;
-  }
-
-  return headers;
-}
-
-async function proxyRemoteLoginHttp(req, res, url) {
-  if (!(await isRemoteLoginRequestAuthorized(req))) {
-    sendError(res, 401, "Remote login authorization required.");
-    return;
-  }
-
-  const state = await readRemoteLoginState();
-  if (!state) {
-    sendError(res, 503, "Remote login session is not active.");
-    return;
-  }
-
-  const proxyReq = http.request(
-    {
-      hostname: "127.0.0.1",
-      port: state.port,
-      path: remoteLoginTargetPath(url),
-      method: req.method,
-      headers: safeProxyRequestHeaders(req, state),
-    },
-    (proxyRes) => {
-      const headers = { ...proxyRes.headers };
-      delete headers["set-cookie"];
-      delete headers["x-frame-options"];
-      headers["cache-control"] = "no-store, private";
-      headers["referrer-policy"] = "no-referrer";
-
-      if (typeof headers.location === "string" && headers.location.startsWith("/")) {
-        headers.location = `/remote-login/xpra${headers.location}`;
-      }
-
-      res.writeHead(proxyRes.statusCode || 502, headers);
-      proxyRes.pipe(res);
-    },
-  );
-
-  proxyReq.on("error", () => {
-    if (!res.headersSent) {
-      sendError(res, 502, "Remote Xpra session is unavailable.");
-    } else {
-      res.end();
-    }
-  });
-
-  req.pipe(proxyReq);
-}
-
-function writeUpgradeError(socket, status, message) {
-  const body = Buffer.from(message);
-  socket.end(
-    `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.length}\r\n\r\n${message}`,
-  );
-}
-
-async function proxyRemoteLoginUpgrade(req, socket, head) {
-  const url = new URL(
-    req.url || "/",
-    `http://${req.headers.host || "localhost"}`,
-  );
-
-  if (!url.pathname.startsWith("/remote-login/xpra")) {
-    writeUpgradeError(socket, "404 Not Found", "Not found.");
-    return;
-  }
-
-  if (!(await isRemoteLoginRequestAuthorized(req))) {
-    writeUpgradeError(socket, "401 Unauthorized", "Remote login authorization required.");
-    return;
-  }
-
-  const state = await readRemoteLoginState();
-  if (!state) {
-    writeUpgradeError(socket, "503 Service Unavailable", "Remote login session is not active.");
-    return;
-  }
-
-  const backend = net.createConnection({
-    host: "127.0.0.1",
-    port: state.port,
-  });
-
-  backend.once("error", () => {
-    writeUpgradeError(socket, "502 Bad Gateway", "Remote Xpra session is unavailable.");
-  });
-
-  backend.once("connect", () => {
-    const lines = [
-      `${req.method || "GET"} ${remoteLoginTargetPath(url)} HTTP/${req.httpVersion}`,
-    ];
-
-    for (let index = 0; index < req.rawHeaders.length; index += 2) {
-      const name = req.rawHeaders[index];
-      const value = req.rawHeaders[index + 1];
-      const lower = name.toLowerCase();
-
-      if (
-        lower === "host" ||
-        lower === "cookie" ||
-        lower.startsWith("cf-") ||
-        lower === "x-forwarded-for" ||
-        lower === "x-forwarded-host" ||
-        lower === "x-forwarded-proto"
-      ) {
-        continue;
-      }
-
-      lines.push(`${name}: ${value}`);
-    }
-
-    lines.push(`Host: 127.0.0.1:${state.port}`);
-    lines.push("X-Forwarded-Prefix: /remote-login/xpra");
-    lines.push("", "");
-
-    backend.write(lines.join("\r\n"));
-    if (head?.length) backend.write(head);
-
-    socket.pipe(backend).pipe(socket);
-  });
 }
 
 function contentType(filePath) {
@@ -265,10 +121,14 @@ function contentType(filePath) {
 }
 
 async function serveStatic(res, pathname) {
-  const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const relative =
+    pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const resolved = path.resolve(publicDir, relative);
 
-  if (resolved !== publicDir && !resolved.startsWith(`${publicDir}${path.sep}`)) {
+  if (
+    resolved !== publicDir &&
+    !resolved.startsWith(`${publicDir}${path.sep}`)
+  ) {
     sendError(res, 403, "Forbidden.");
     return;
   }
@@ -285,7 +145,7 @@ async function serveStatic(res, pathname) {
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "Content-Security-Policy":
-        "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+        "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     res.end(body);
   } catch {
@@ -293,8 +153,35 @@ async function serveStatic(res, pathname) {
   }
 }
 
+function handleBridgeError(res, error) {
+  if (error?.code === "EPORTAL_LOGIN_BRIDGE_UNAUTHORIZED") {
+    sendError(res, 401, error.message, error.code);
+    return true;
+  }
+
+  if (error?.code === "EPORTAL_LOGIN_BRIDGE_NOT_FOUND") {
+    sendError(res, 404, error.message, error.code);
+    return true;
+  }
+
+  if (error?.code === "EPORTAL_LOGIN_BRIDGE_UNSUPPORTED") {
+    sendError(res, 422, error.message, error.code);
+    return true;
+  }
+
+  if (error?.code === "EPORTAL_PROFILE_BUSY") {
+    sendError(res, 409, error.message, error.code);
+    return true;
+  }
+
+  return false;
+}
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const url = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "localhost"}`,
+  );
 
   try {
     if (req.method === "GET" && url.pathname === "/api/server/status") {
@@ -314,43 +201,84 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, {
         ...status,
         keepalive: getPortalKeepaliveState(),
+        loginBridge: getLoginBridgeSummary(),
       });
       return;
     }
 
-    if (req.method === "GET" && url.pathname === "/api/remote-login/status") {
-      const authorized = await isRemoteLoginRequestAuthorized(req);
-      sendJson(res, 200, await getRemoteLoginStatus({ authorized }));
+    if (req.method === "GET" && url.pathname === "/api/login-bridge/status") {
+      sendJson(res, 200, getLoginBridgeSummary());
       return;
     }
 
-    if (req.method === "GET" && url.pathname === "/remote-login/status.json") {
-      const authorized = await isRemoteLoginRequestAuthorized(req);
-      sendJson(res, 200, await getRemoteLoginStatus({ authorized }));
+    if (req.method === "POST" && url.pathname === "/api/login-bridge/start") {
+      try {
+        sendJson(
+          res,
+          200,
+          await startLoginBridge({
+            ttlMinutes: loginBridgeTtlMinutes,
+          }),
+        );
+      } catch (error) {
+        if (handleBridgeError(res, error)) return;
+        throw error;
+      }
       return;
     }
 
-    if (req.method === "POST" && url.pathname === "/api/remote-login/authorize") {
-      const state = await readRemoteLoginState();
-      if (!state) {
-        sendError(res, 503, "Remote login session is not active.");
-        return;
+    if (req.method === "GET" && url.pathname === "/api/login-bridge/state") {
+      try {
+        sendJson(res, 200, await getLoginBridgeState(bearerToken(req)));
+      } catch (error) {
+        if (handleBridgeError(res, error)) return;
+        throw error;
       }
+      return;
+    }
 
-      const body = await readJsonBody(req, 8 * 1024);
-      const token = typeof body.token === "string" ? body.token : "";
-
-      if (!(await validateRemoteLoginToken(token))) {
-        sendError(res, 401, "Invalid or expired remote login token.");
-        return;
+    if (req.method === "POST" && url.pathname === "/api/login-bridge/action") {
+      try {
+        const body = await readJsonBody(req, 32 * 1024);
+        sendJson(
+          res,
+          200,
+          await applyLoginBridgeAction(bearerToken(req), body),
+        );
+      } catch (error) {
+        if (handleBridgeError(res, error)) return;
+        throw error;
       }
+      return;
+    }
 
-      setRemoteLoginCookie(req, res, token, state.expiresAt);
-      sendJson(res, 200, {
-        ok: true,
-        expiresAt: state.expiresAt,
-        bandwidthKbps: state.bandwidthKbps,
-      });
+    const bridgeImageMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/api\/login-bridge\/image\/(image-\d+)$/);
+
+    if (bridgeImageMatch) {
+      try {
+        sendPng(
+          res,
+          await getLoginBridgeImage(
+            bearerToken(req),
+            bridgeImageMatch[1],
+          ),
+        );
+      } catch (error) {
+        if (handleBridgeError(res, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/login-bridge/stop") {
+      try {
+        sendJson(res, 200, await stopLoginBridge(bearerToken(req)));
+      } catch (error) {
+        if (handleBridgeError(res, error)) return;
+        throw error;
+      }
       return;
     }
 
@@ -374,7 +302,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const goMatch = req.method === "GET" && url.pathname.match(/^\/go\/([a-z0-9-]+)$/);
+    const goMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/go\/([a-z0-9-]+)$/);
+
     if (goMatch) {
       try {
         const handoffUrl = await createModuleHandoff(goMatch[1]);
@@ -386,12 +317,12 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
-          sendError(res, 503, error.message);
+          sendError(res, 503, error.message, error.code);
           return;
         }
 
         if (error?.code === "EPORTAL_HANDOFF_UNAVAILABLE") {
-          sendError(res, 502, error.message);
+          sendError(res, 502, error.message, error.code);
           return;
         }
 
@@ -399,7 +330,8 @@ const server = http.createServer(async (req, res) => {
           sendError(
             res,
             409,
-            "Server ePortal profile is busy, likely because remote login is in progress.",
+            "Server ePortal profile is busy, likely because interactive login is in progress.",
+            error.code,
           );
           return;
         }
@@ -416,42 +348,43 @@ const server = http.createServer(async (req, res) => {
 
     if (
       req.method === "GET" &&
-      (url.pathname === "/remote-login" || url.pathname === "/remote-login/")
+      (url.pathname === "/server-login" ||
+        url.pathname === "/server-login/")
     ) {
-      await serveStatic(res, "/remote-login.html");
-      return;
-    }
-
-    if (url.pathname.startsWith("/remote-login/xpra")) {
-      await proxyRemoteLoginHttp(req, res, url);
+      await serveStatic(res, "/server-login.html");
       return;
     }
 
     await serveStatic(res, url.pathname);
   } catch (error) {
     console.error("Request failed:", error?.message || error);
+
     if (!res.headersSent) {
-      sendError(res, error?.statusCode || 500, error?.statusCode ? error.message : "Internal server error.");
+      sendError(
+        res,
+        error?.statusCode || 500,
+        error?.statusCode ? error.message : "Internal server error.",
+      );
     } else {
       res.end();
     }
   }
 });
 
-server.on("upgrade", (req, socket, head) => {
-  void proxyRemoteLoginUpgrade(req, socket, head).catch(() => {
-    writeUpgradeError(socket, "500 Internal Server Error", "Remote login proxy failed.");
-  });
-});
-
 await preferenceStore.init();
-const keepalive = startPortalKeepalive({ intervalMinutes: keepaliveMinutes });
+const keepalive = startPortalKeepalive({
+  intervalMinutes: keepaliveMinutes,
+});
 
 server.listen(port, host, () => {
   console.log(`NUTC Portal: http://${host}:${port}`);
   console.log("Dashboard authentication: delegated to Cloudflare Access.");
-  console.log("Server ePortal session: persistent Playwright profile at .eportal-profile/");
-  console.log("Client ePortal session: optional userscript/browser convenience path.");
+  console.log(
+    "Server ePortal session: persistent Playwright profile at .eportal-profile/",
+  );
+  console.log(
+    "Interactive server re-login: native HTML form bridge at /server-login/",
+  );
   console.log(
     keepalive.enabled
       ? `ePortal keepalive: every ${keepalive.intervalMinutes} minute(s).`
