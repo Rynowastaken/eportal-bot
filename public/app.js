@@ -34,6 +34,9 @@ const backgroundUploadPreviewSource = document.querySelector("#backgroundUploadP
 const backgroundUploadStatus = document.querySelector("#backgroundUploadStatus");
 const backgroundUploadCancel = document.querySelector("#backgroundUploadCancel");
 const backgroundUploadApply = document.querySelector("#backgroundUploadApply");
+const debugRestartServer = document.querySelector("#debugRestartServer");
+const debugRestartStatus = document.querySelector("#debugRestartStatus");
+const debugRestartIcon = document.querySelector("#debugRestartIcon");
 
 let modulesCache = [];
 let stagedThemeSettings = null;
@@ -643,6 +646,90 @@ clearBackgroundAction.addEventListener("click", () => {
     from: 0.55,
     to: 1,
   });
+});
+
+function setDebugRestartStatus(message, isError = false) {
+  debugRestartStatus.textContent = message;
+  debugRestartStatus.classList.toggle("text-[#f4a0a5]", isError);
+  debugRestartStatus.classList.toggle("text-[var(--muted)]", !isError);
+}
+
+async function waitForServerRestart(previousInstanceId) {
+  const deadline = Date.now() + 15_000;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    try {
+      const response = await fetch("/api/server/status", {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) continue;
+
+      const status = await response.json();
+
+      if (
+        status.instanceId &&
+        status.instanceId !== previousInstanceId
+      ) {
+        return true;
+      }
+    } catch {
+      // Temporary failures are expected while the server restarts.
+    }
+  }
+
+  return false;
+}
+
+debugRestartServer.addEventListener("click", async () => {
+  if (debugRestartServer.disabled) return;
+
+  debugRestartServer.disabled = true;
+  debugRestartIcon.classList.add("animate-spin");
+  setDebugRestartStatus("正在重新啟動 Server…");
+
+  try {
+    const before = await api("/api/server/status");
+
+    const response = await fetch("/api/debug/restart", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || `Restart failed (${response.status})`,
+      );
+    }
+
+    const restarted = await waitForServerRestart(before.instanceId);
+
+    if (!restarted) {
+      throw new Error("Server 沒有在 15 秒內重新上線。");
+    }
+
+    setDebugRestartStatus("Server 已重新啟動，正在重新載入…");
+    await motion?.emphasize?.(debugRestartServer, {
+      duration: 180,
+    });
+
+    window.location.reload();
+  } catch (error) {
+    debugRestartServer.disabled = false;
+    debugRestartIcon.classList.remove("animate-spin");
+    setDebugRestartStatus(
+      "重新啟動失敗：" + (error?.message || String(error)),
+      true,
+    );
+  }
 });
 
 serverLogoutAction.addEventListener("click", async () => {
