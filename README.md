@@ -100,6 +100,27 @@ error
 
 Dashboard 也會顯示 server session 是否需要重新登入。
 
+## UI / theming
+
+The Dashboard and Login Bridge use the same self-hosted Tailwind CSS runtime and
+Lucide icon set as `Rynowastaken/budget`.
+
+The visual language follows the Budget app's dark glass system:
+
+- translucent cards with a subtle white border and 18px blur,
+- rounded 14-20px controls and panels,
+- a filled primary control color with an accent hover color,
+- compact menu tiles with Lucide icons,
+- restrained shadows and short lift-on-hover transitions.
+
+The Dashboard menu also includes **背景圖片**. The selected image is compressed and
+stored in the current browser only. A five-color palette is sampled from the image
+using the same OKLab/OKLCH-style extraction approach as the Budget app, then converted
+into a Tonal Spot palette for buttons, focus rings, icons, and card accents. The same
+theme automatically carries into `/server-login/` in that browser.
+
+Removing the background restores the default rose/gold palette.
+
 ## Session keepalive
 
 While the Dashboard server is running, it periodically opens the authenticated ePortal
