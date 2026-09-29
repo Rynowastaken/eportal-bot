@@ -418,6 +418,35 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
   }, { timeoutMs: 5_000 });
 }
 
+export async function openPortalRelaySession({ timeoutMs = 5_000 } = {}) {
+  const release = await acquireProfileAccess({ timeoutMs });
+  let context;
+
+  try {
+    context = await openServerPortalSession({ headless: true });
+
+    let closed = false;
+    return {
+      context,
+      request: context.request,
+      async close() {
+        if (closed) return;
+        closed = true;
+
+        try {
+          await context.close();
+        } finally {
+          await release();
+        }
+      },
+    };
+  } catch (error) {
+    if (context) await context.close().catch(() => {});
+    await release();
+    throw error;
+  }
+}
+
 export async function openAisWithServerSession({ headless = true } = {}) {
   const release = await acquireProfileAccess({ timeoutMs: 30_000 });
   let context;
