@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -103,6 +104,55 @@ function redirect(res, location) {
     "X-Content-Type-Options": "nosniff",
   });
   res.end();
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function sendPostHandoff(res, handoff) {
+  const target = new URL(handoff.url);
+  const nonce = crypto.randomBytes(18).toString("base64url");
+
+  const fields = (handoff.fields || [])
+    .map(
+      ([name, value]) =>
+        `<input type="hidden" name="${escapeHtmlAttribute(name)}" value="${escapeHtmlAttribute(value)}">`,
+    )
+    .join("\n");
+
+  const body = Buffer.from(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Connecting…</title>
+</head>
+<body>
+  <form id="handoff" method="post" action="${escapeHtmlAttribute(target.toString())}">
+    ${fields}
+    <noscript><button type="submit">Continue</button></noscript>
+  </form>
+  <script nonce="${nonce}">document.getElementById("handoff").submit();</script>
+</body>
+</html>`);
+
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": body.length,
+    "Cache-Control": "no-store, private",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy":
+      `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${target.origin}; base-uri 'none'; frame-ancestors 'none'`,
+  });
+  res.end(body);
 }
 
 function contentType(filePath) {
@@ -311,8 +361,22 @@ const server = http.createServer(async (req, res) => {
 
     if (goMatch) {
       try {
-        const handoffUrl = await createModuleHandoff(goMatch[1]);
-        redirect(res, handoffUrl);
+        const handoff = await createModuleHandoff(goMatch[1]);
+
+        if (handoff?.type === "get") {
+          redirect(res, handoff.url);
+          return;
+        }
+
+        if (handoff?.type === "post") {
+          sendPostHandoff(res, handoff);
+          return;
+        }
+
+        throw Object.assign(
+          new Error("ePortal returned an unsupported handoff type."),
+          { code: "EPORTAL_HANDOFF_UNAVAILABLE" },
+        );
       } catch (error) {
         if (error?.message === "Unknown ePortal module.") {
           sendError(res, 404, error.message);
@@ -329,7 +393,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        if (error?.code === "EPORTAL_HANDOFF_POST_REQUIRED") {
+        if (
+          error?.code === "EPORTAL_HANDOFF_POST_REQUIRED" ||
+          error?.code === "EPORTAL_HANDOFF_POST_UNSUPPORTED"
+        ) {
           sendError(res, 502, error.message, error.code);
           return;
         }
