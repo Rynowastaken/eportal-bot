@@ -78,7 +78,7 @@ async function cleanup() {
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => {
     void cleanup().finally(() => {
-      process.exitCode = signal === "SIGINT" ? 130 : 1;
+      process.exit(signal === "SIGINT" ? 130 : 1);
     });
   });
 }
