@@ -40,6 +40,50 @@ Dashboard / APIs / login bridge / launch routes
 The only route intended to be public is `/login`. It is self-contained and does not
 load the stored account picture, background, preferences, or private API data.
 
+## Configuration wizard
+
+Run the interactive helper before copying anything into `/etc`:
+
+```bash
+npm run deploy:configure
+```
+
+It asks for the Portal hostname, Cloudflare Access team domain and Application AUD,
+Linux service user/group, repository path, Node executable, Origin CA certificate/key
+paths, and ePortal keepalive/login-bridge timing.
+
+It validates the answers and generates a private deployment bundle under:
+
+```text
+.deploy/
+├── Caddyfile
+├── eportal.env
+├── eportal-bot.service
+└── README.txt
+```
+
+The generated environment file is mode 600. The `.deploy/` directory is gitignored so
+the generated deployment configuration is not accidentally committed.
+
+After reviewing the generated files, either install them manually as shown in
+`.deploy/README.txt`, or rerun the wizard as root with:
+
+```bash
+sudo npm run deploy:configure -- --install
+```
+
+The install mode backs up existing target files before writing:
+
+```text
+/etc/eportal-bot/eportal.env
+/etc/caddy/Caddyfile
+/etc/systemd/system/eportal-bot.service
+```
+
+It deliberately does not create Cloudflare DNS, Access policies, or Origin CA
+certificates because those still belong to your Cloudflare account. The wizard prints
+the exact Cloudflare-side checklist for those remaining steps.
+
 ## 1. Keep Node private on localhost
 
 Use the production environment template:
