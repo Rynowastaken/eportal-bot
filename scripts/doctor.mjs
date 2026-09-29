@@ -16,9 +16,9 @@ const required = [
   "scripts/portal-run.mjs",
   "public/index.html",
   "public/server-login.html",
-  "public/app.js",
   "public/server-login.js",
   "public/server-login.css",
+  "public/app.js",
   "public/app.css",
   "public/userscript/nutc-portal.user.js",
 ];
@@ -39,12 +39,17 @@ for (const file of required) {
 console.log("NUTC Portal runtime check");
 console.log(`  platform: ${process.platform} (${process.arch})`);
 console.log(`  node: ${process.version}`);
-console.log("  interactive ePortal login: server Playwright via npm run login");
-console.log("  interactive server login: native HTML bridge at /server-login/");
-console.log("  server-side browser: required for background/scheduled work");
+console.log("  server interactive login: native headless form bridge at /server-login/");
+console.log("  local headed fallback: npm run login");
+console.log("  server-side browser: Playwright Chromium");
 console.log("  persistent profile: .eportal-profile/");
 console.log("  background session check: npm run portal:status");
-console.log(`  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "10 (default)"}`);
+console.log(
+  `  login bridge ttl minutes: ${process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES || "15 (default)"}`,
+);
+console.log(
+  `  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "10 (default)"}`,
+);
 console.log("  client convenience detection: userscript bridge");
 
 for (const error of errors) console.error(`  error: ${error}`);
