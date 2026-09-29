@@ -12,6 +12,10 @@ import {
   startActivityRelay,
 } from "./src/activity-relay.js";
 import {
+  clearClassScheduleCache,
+  getClassSchedule,
+} from "./src/class-schedule.js";
+import {
   applyLoginBridgeAction,
   getLoginBridgeImage,
   getLoginBridgeState,
@@ -614,6 +618,7 @@ const server = http.createServer(async (req, res) => {
 
       await shutdownLoginBridge();
       clearActivityRelaySessions();
+      clearClassScheduleCache();
 
       restartScheduled = true;
       sendJson(res, 202, {
@@ -638,10 +643,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/class-schedule") {
+      try {
+        const force = /^(1|true|yes)$/i.test(
+          String(url.searchParams.get("refresh") || ""),
+        );
+        sendJson(res, 200, await getClassSchedule({ force }));
+      } catch (error) {
+        const status =
+          error?.statusCode ||
+          (error?.code === "EPORTAL_PROFILE_BUSY"
+            ? 409
+            : error?.code === "EPORTAL_LOGIN_REQUIRED"
+              ? 401
+              : 502);
+
+        sendError(
+          res,
+          status,
+          error?.message || "Unable to load class schedule.",
+          error?.code || "CLASS_SCHEDULE_UNAVAILABLE",
+        );
+      }
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/portal-logout") {
       try {
         const result = await logoutServerPortalSession();
         clearActivityRelaySessions();
+        clearClassScheduleCache();
         sendJson(res, 200, result);
       } catch (error) {
         if (error?.code === "EPORTAL_PROFILE_BUSY") {
@@ -666,6 +697,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/login-bridge/start") {
       try {
+        clearClassScheduleCache();
         sendJson(
           res,
           200,
