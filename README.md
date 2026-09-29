@@ -8,34 +8,34 @@
 
 # NUTC Portal
 
-一個為 **國立臺中科技大學（NUTC）** 學生設計的自架個人 Dashboard。
+給國立臺中科技大學學生用的自架 Dashboard。把課表、缺曠紀錄、ePortal 常用系統全部放在同一頁，不用每次重登。
 
-NUTC Portal 將常用的校務資訊集中在同一個頁面，包含課表、缺曠紀錄、ePortal 常用系統入口，以及可重複使用的 Server ePortal 登入狀態。
+跟其他類似工具最大的差別是：它在 server 上跑一個 headless Chromium 幫你維持 ePortal 登入狀態，但真正存取各子系統的是**你自己的瀏覽器**。server 只負責過橋——從 ePortal 拿到 SSO token 後轉交給你，你的瀏覽器再去目標系統完成登入。這樣 server 不會碰到你的 session 內容，也沒有中間人問題。
 
 > [!NOTE]
 > 本專案為非官方個人專案，與國立臺中科技大學官方無關。
 
 ## 功能
 
-- 從 NUTC AIS 顯示每週課表
-- 顯示 AIS 缺曠紀錄
-- 快速開啟學生管理系統、WebMail、活動報名、EP 與 TronClass
-- 可直接從 Dashboard 登入或重新登入 Server ePortal
-- 自動維持 ePortal 登入狀態
-- 支援自訂配色、背景圖片、顯示名稱與頭像
-- 桌面與手機皆支援 RWD
-- 可選擇使用 Cloudflare Access 保護公開部署的網站
+- 顯示 AIS 每週課表（server 定時爬取，快取 5 分鐘）
+- 顯示 AIS 缺曠紀錄（含各類別統計）
+- 一鍵開啟五大 ePortal 子系統：學生管理、WebMail、活動報名、EP 學習歷程、TronClass
+- Server 端持久保存 ePortal 登入狀態，重開機不用重登
+- 登入流程透過網頁表單完成，密碼不落盤
+- 自動 keepalive，定時檢查並延續 ePortal session
+- 自訂頭像、顯示名稱、背景圖片
+- 自訂主題配色（深淺色、色彩飽和度、亮度）
+- 桌面與手機 RWD
+- 可選擇用 Cloudflare Access 保護公開部署
 
 ## 快速開始
 
-### 系統需求
+### 你需要
 
-- Node.js 18 或更新版本
+- Node.js 18 以上
 - npm
 - NUTC ePortal 帳號
-- 執行伺服器的電腦可以連上網路
-
-先下載專案並安裝相依套件：
+- 一台能上網的電腦（本機或 server 都行）
 
 ```bash
 git clone https://github.com/Rynowastaken/eportal-bot.git
@@ -46,42 +46,44 @@ npm run install-browser
 npm run doctor
 ```
 
-啟動 Dashboard：
+啟動：
 
 ```bash
 npm start
 ```
 
-接著在瀏覽器開啟：
+瀏覽器開 `http://localhost:4174`。
 
-```text
-http://localhost:4174
-```
+本機使用到這邊就完成了，不用管 Cloudflare Access。
 
-本機使用不需要設定 Cloudflare Access。
-
-在支援的 Linux 發行版上，`npm run install-browser` 也會一併安裝 Playwright Chromium 所需要的系統套件。
+> `npm run install-browser` 會裝 Playwright Chromium，在大多數 Linux 發行版上也會順便裝需要的系統套件。
 
 ## 第一次登入
 
-開啟 Dashboard 後，點選 **登入 Server ePortal**。
+打開 Dashboard，點 **登入 Server ePortal**。
 
-登入頁面會控制伺服器上的 Playwright 瀏覽器，並將登入後的 ePortal session 儲存在：
+這時 server 會在背景開一個 Chromium 瀏覽器，並把 ePortal 登入頁面透過「Login Bridge」顯示給你看。你在網頁上輸入帳密，server 幫你打到真實的瀏覽器裡。登入完成後，整個瀏覽器狀態會存在：
 
 ```text
 .eportal-profile/
 ```
 
-伺服器不需要圖形桌面環境。你可以直接用手機、平板或另一台電腦透過 Dashboard 完成登入。
-
-登入成功後，Dashboard 就可以讀取 AIS 課表、缺曠紀錄，以及替支援的 ePortal 系統建立 SSO 登入流程。
+server 不需要圖形桌面環境，你可以用手機或另一台電腦完成登入。
 
 > [!IMPORTANT]
-> `.eportal-profile/` 內含已登入的瀏覽器狀態，請把它視為帳號憑證。不要 commit、公開上傳，或複製到不受信任的電腦。
+> `.eportal-profile/` 就是你已登入的瀏覽器狀態，等同帳號憑證。不要 commit、不要公開上傳、不要複製到不信任的電腦。
+
+## 它是怎麼運作的
+
+1. **課表與缺曠** — server 用已登入的 Chromium 直接去 AIS 撈資料，快取 5 分鐘回傳 JSON 給前端渲染
+2. **子系統 SSO** — 點擊某個模組時，server 去 ePortal dashboard 點對應按鈕，攔截 SSO 轉導流程，抓出目標系統的 login URL（或 POST form），回傳給你自己的瀏覽器去執行。你的瀏覽器直接跟目標系統建立 session，server 不經手內容
+3. **活動報名系統** — 因為目標是舊架構 HTTP 系統，沒辦法乾淨轉交 SSO URL，所以 server 會跑一個暫存 30 分鐘的 reverse proxy，把頁面內容即時轉譯給你
+4. **Login Bridge** — 登入時的表單是即時從 ePortal 頁面擷取的（含驗證碼圖片），你在網頁上填什麼 server 就打什麼進 Chromium，密碼跟 MFA 只存在記憶體，不會寫入任何檔案或 log
+5. **Keepalive** — 預設每 10 分鐘檢查一次 ePortal session 是否還有效
 
 ## 部署到其他電腦
 
-如果要放在家用伺服器、Raspberry Pi、VPS 或其他長時間運作的電腦上，安裝方式基本相同：
+放到家用 server、樹莓派、VPS 等長時間運作的機器上，步驟一樣：
 
 ```bash
 git clone https://github.com/Rynowastaken/eportal-bot.git
@@ -93,143 +95,99 @@ npm run doctor
 npm start
 ```
 
-預設使用：
-
-```text
-Port 4174
-```
-
-若要讓同一個區域網路內的其他裝置連線，可以改成：
+預設 port `4174`。要讓區網內其他裝置連線：
 
 ```bash
 HOST=0.0.0.0 PORT=4174 npm start
 ```
 
-例如伺服器的區網 IP 是 `192.168.1.20`，就可以從其他裝置開啟：
+假設 server IP 是 `192.168.1.20`，其他裝置開 `http://192.168.1.20:4174` 即可。
 
-```text
-http://192.168.1.20:4174
-```
+> 只在區網使用的話確保網路環境可信任，不要直接把 port 暴露到公網。
 
-若只在區網內使用，請自行確保網路環境可信任，並避免直接把 `4174` port 暴露到公開網路。
+## 部署到公網
 
-## 對外網路部署
-
-如果需要從外網存取，建議使用以下架構：
+架構：
 
 ```text
 Internet
   ↓
-Cloudflare Access
+Cloudflare Access（驗證使用者身份）
   ↓
 Caddy HTTPS Reverse Proxy
   ↓
 NUTC Portal（127.0.0.1:4174）
 ```
 
-先完成前面的基本安裝，再在 Linux 伺服器執行：
+基本安裝完成後，在 Linux server 上跑：
 
 ```bash
 npm run deploy:configure
 ```
 
-設定精靈會詢問：
+設定精靈會依序詢問 domain、Cloudflare Access 參數、service 使用者、TLS 憑證路徑等。完成後 `.deploy/` 會有部署設定檔。
 
-- Portal 網域名稱
-- Cloudflare Access Team Domain
-- Cloudflare Access Application AUD
-- Linux service 使用者與群組
-- Node.js 路徑
-- TLS 憑證與私鑰路徑
-
-完成後會在 `.deploy/` 產生部署設定檔。
-
-確認內容無誤後，可以執行：
+確認無誤：
 
 ```bash
 sudo npm run deploy:configure -- --install
-```
-
-接著檢查並啟動服務：
-
-```bash
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl daemon-reload
 sudo systemctl enable --now eportal-bot
 sudo systemctl reload caddy
 ```
 
-Cloudflare DNS、Cloudflare Access Application 與 Origin CA 憑證仍需要在你自己的 Cloudflare 帳號中設定。
-
-完整部署方式請參考 [Cloudflare Access 部署文件](docs/cloudflare-access.md)。
+Cloudflare 那邊的 DNS、Access Application、Origin CA 憑證還是要自己去 Cloudflare 後台設定。詳細步驟見 [Cloudflare Access 部署文件](docs/cloudflare-access.md)。
 
 ## 常用指令
 
 | 指令 | 用途 |
 | --- | --- |
 | `npm start` | 啟動 Dashboard |
-| `npm run doctor` | 檢查目前電腦的執行環境 |
-| `npm run check` | 檢查專案 JavaScript 語法 |
-| `npm run install-browser` | 安裝 Playwright Chromium 與支援的 Linux 系統套件 |
-| `npm run portal:status` | 檢查 Server ePortal 登入狀態 |
-| `npm run login` | 使用有介面的 Playwright 登入流程 |
-| `npm run deploy:configure` | 產生正式環境部署設定 |
-| `npm run deploy:check` | 檢查正式環境設定是否完整 |
+| `npm run doctor` | 檢查執行環境是否就緒 |
+| `npm run check` | 檢查所有 JS 語法 |
+| `npm run install-browser` | 安裝 Playwright Chromium 及系統套件 |
+| `npm run portal:status` | 查看 ePortal 登入狀態 |
+| `npm run login` | 用有 GUI 的 Playwright 手動登入（備用方案） |
+| `npm run deploy:configure` | 產生部署設定 |
+| `npm run deploy:check` | 檢查部署設定是否完整 |
 
-## 可選設定
+## 環境變數
 
-一般本機使用不需要修改設定。
+本機使用通常不用改。
 
-需要時可以透過環境變數調整：
-
-```bash
-PORT=4174
-HOST=0.0.0.0
-EPORTAL_KEEPALIVE_MINUTES=10
-EPORTAL_LOGIN_BRIDGE_TTL_MINUTES=15
-```
-
-如果使用 systemd、PM2、Docker 或其他程序管理工具，建議設定：
-
-```bash
-EPORTAL_RESTART_MODE=exit
-```
-
-正式 Cloudflare Access 部署還需要：
-
-```bash
-CLOUDFLARE_ACCESS_ENFORCE=1
-CLOUDFLARE_ACCESS_TEAM_DOMAIN=https://YOUR-TEAM.cloudflareaccess.com
-CLOUDFLARE_ACCESS_AUD=YOUR_APPLICATION_AUD_TAG
-```
+| 變數 | 預設值 | 說明 |
+| --- | --- | --- |
+| `PORT` | `4174` | HTTP port |
+| `HOST` | `0.0.0.0` | 繫結 IP |
+| `EPORTAL_KEEPALIVE_MINUTES` | `10` | 自動檢查 session 的間隔（分鐘），設 0 關閉 |
+| `EPORTAL_LOGIN_BRIDGE_TTL_MINUTES` | `15` | Login Bridge 的有效時間 |
+| `EPORTAL_RESTART_MODE` | `self` | 用 systemd 管理時建議設 `exit` |
+| `CLOUDFLARE_ACCESS_ENFORCE` | — | 設 `1` 啟用 origin JWT 驗證 |
+| `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | — | Cloudflare Access team domain |
+| `CLOUDFLARE_ACCESS_AUD` | — | Cloudflare Access Application AUD |
 
 ## 資料與隱私
 
-ePortal 的持久登入狀態會保存在本機：
+所有資料都在你機器的這兩個目錄：
 
-```text
-.eportal-profile/
-```
+- `.eportal-profile/` — 已登入的 Chromium 瀏覽器狀態（cookies、localStorage 等）
+- `data/` — 自訂的頭像、背景圖、顯示名稱等偏好設定
 
-Dashboard 的顯示名稱、頭像與自訂背景則會保存在：
+Login Bridge 處理的帳號密碼與 MFA 驗證碼只存在記憶體中，不會寫入任何檔案或 log。
 
-```text
-data/
-```
-
-透過 Login Bridge 輸入的密碼與 MFA 驗證資訊，設計上只會暫存在記憶體中，不會刻意寫入應用程式 log 或偏好設定檔。
-
-請勿 commit 或分享：
+**不要 commit 或分享：**
 
 - `.eportal-profile/`
-- Cookies 或匯出的瀏覽器 session
+- `data/` 中的私人檔案
+- cookies 或匯出的瀏覽器 session
 - JWT / SSO Token
 - Login Bridge Token
-- 正式環境的私人設定檔
+- 部署設定檔中的私密資訊
 
 ## 進階文件
 
 - [Cloudflare Access 部署](docs/cloudflare-access.md)
 - [Userscript / Client Browser 整合](docs/userscript.md)
 
-大多數使用者只需要完成 **快速開始** 與 **第一次登入**，就可以開始使用。
+大多數使用者只要完成**快速開始**跟**第一次登入**就能正常使用了。
