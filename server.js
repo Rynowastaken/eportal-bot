@@ -16,6 +16,10 @@ import {
   getClassSchedule,
 } from "./src/class-schedule.js";
 import {
+  clearAbsenceListCache,
+  getAbsenceList,
+} from "./src/absence-list.js";
+import {
   applyLoginBridgeAction,
   getLoginBridgeImage,
   getLoginBridgeState,
@@ -619,6 +623,7 @@ const server = http.createServer(async (req, res) => {
       await shutdownLoginBridge();
       clearActivityRelaySessions();
       clearClassScheduleCache();
+      clearAbsenceListCache();
 
       restartScheduled = true;
       sendJson(res, 202, {
@@ -668,11 +673,37 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/absence-list") {
+      try {
+        const force = /^(1|true|yes)$/i.test(
+          String(url.searchParams.get("refresh") || ""),
+        );
+        sendJson(res, 200, await getAbsenceList({ force }));
+      } catch (error) {
+        const status =
+          error?.statusCode ||
+          (error?.code === "EPORTAL_PROFILE_BUSY"
+            ? 409
+            : error?.code === "EPORTAL_LOGIN_REQUIRED"
+              ? 401
+              : 502);
+
+        sendError(
+          res,
+          status,
+          error?.message || "Unable to load absence records.",
+          error?.code || "ABSENCE_LIST_UNAVAILABLE",
+        );
+      }
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/portal-logout") {
       try {
         const result = await logoutServerPortalSession();
         clearActivityRelaySessions();
         clearClassScheduleCache();
+        clearAbsenceListCache();
         sendJson(res, 200, result);
       } catch (error) {
         if (error?.code === "EPORTAL_PROFILE_BUSY") {
@@ -698,6 +729,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/login-bridge/start") {
       try {
         clearClassScheduleCache();
+        clearAbsenceListCache();
         sendJson(
           res,
           200,
