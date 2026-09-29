@@ -7,11 +7,6 @@ import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import {
-  getNativeLoginRelayStatus,
-  handleNativeLoginRelayRequest,
-  startNativeLoginRelay,
-} from "./src/native-login-relay.js";
-import {
   REMOTE_LOGIN_COOKIE,
   getRemoteLoginStatus,
   isRemoteLoginRequestAuthorized,
@@ -33,12 +28,6 @@ const port = Number(process.env.PORT || 4173);
 const serverStartedAt = Date.now();
 const preferenceStore = new PreferenceStore();
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
-const nativeRelayOrigin = process.env.EPORTAL_RELAY_ORIGIN
-  ? new URL(process.env.EPORTAL_RELAY_ORIGIN)
-  : null;
-const nativeRelayTtlMinutes = Number(
-  process.env.EPORTAL_RELAY_TTL_MINUTES ?? 15,
-);
 
 function sendJson(res, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -308,13 +297,6 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
   try {
-    if (
-      nativeRelayOrigin &&
-      String(req.headers.host || "").toLowerCase() === nativeRelayOrigin.host.toLowerCase()
-    ) {
-      await handleNativeLoginRelayRequest(req, res, url, nativeRelayOrigin);
-      return;
-    }
     if (req.method === "GET" && url.pathname === "/api/server/status") {
       sendJson(res, 200, {
         startedAt: serverStartedAt,
@@ -335,60 +317,6 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
-    if (req.method === "GET" && url.pathname === "/api/native-login/status") {
-      sendJson(
-        res,
-        200,
-        getNativeLoginRelayStatus(Boolean(nativeRelayOrigin)),
-      );
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/native-login/start") {
-      if (!nativeRelayOrigin) {
-        sendJson(res, 503, {
-          error: "EPORTAL_RELAY_ORIGIN is not configured.",
-          code: "EPORTAL_RELAY_NOT_CONFIGURED",
-        });
-        return;
-      }
-
-      const body = await readJsonBody(req, 8 * 1024);
-      const returnUrl =
-        typeof body.returnUrl === "string" ? body.returnUrl : "";
-
-      try {
-        sendJson(
-          res,
-          200,
-          await startNativeLoginRelay({
-            relayOrigin: nativeRelayOrigin,
-            returnUrl,
-            ttlMinutes: nativeRelayTtlMinutes,
-          }),
-        );
-      } catch (error) {
-        if (error?.code === "EPORTAL_PROFILE_BUSY") {
-          sendJson(res, 409, {
-            error: "The server ePortal profile is currently busy.",
-            code: error.code,
-          });
-          return;
-        }
-
-        if (error?.code === "EPORTAL_RELAY_NOT_CONFIGURED") {
-          sendJson(res, 503, {
-            error: error.message,
-            code: error.code,
-          });
-          return;
-        }
-
-        throw error;
-      }
-      return;
-    }
-
 
     if (req.method === "GET" && url.pathname === "/api/remote-login/status") {
       const authorized = await isRemoteLoginRequestAuthorized(req);
@@ -524,11 +452,6 @@ server.listen(port, host, () => {
   console.log("Dashboard authentication: delegated to Cloudflare Access.");
   console.log("Server ePortal session: persistent Playwright profile at .eportal-profile/");
   console.log("Client ePortal session: optional userscript/browser convenience path.");
-  console.log(
-    nativeRelayOrigin
-      ? `Native ePortal login relay: ${nativeRelayOrigin.origin}`
-      : "Native ePortal login relay: disabled (set EPORTAL_RELAY_ORIGIN).",
-  );
   console.log(
     keepalive.enabled
       ? `ePortal keepalive: every ${keepalive.intervalMinutes} minute(s).`
