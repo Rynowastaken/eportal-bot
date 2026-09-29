@@ -154,6 +154,17 @@ function safeUrlLabel(raw) {
   }
 }
 
+const LEGACY_HTTP_HANDOFF_HOSTS = Object.freeze({
+  webmail: ["163.17.131.143"],
+});
+
+function isTrustedLegacyHttpTarget(module, rawUrl) {
+  const target = rawUrl instanceof URL ? rawUrl : new URL(rawUrl);
+  const hosts = LEGACY_HTTP_HANDOFF_HOSTS[module.id] || [];
+
+  return target.protocol === "http:" && hosts.includes(target.hostname);
+}
+
 function normalizeExternalHandoffUrl(url, eportalOrigin) {
   const target = url instanceof URL ? new URL(url) : new URL(url);
 
@@ -265,6 +276,16 @@ async function discoverBareExternalGet(
 
       if (next.origin !== eportalOrigin) {
         const external = normalizeExternalHandoffUrl(next, eportalOrigin);
+
+        if (!external && isTrustedLegacyHttpTarget(module, next)) {
+          console.log(
+            `[handoff] following trusted legacy HTTP redirect for ${module.id}: ${next.hostname}${next.pathname}`,
+          );
+          referer = current.toString();
+          current = next;
+          continue;
+        }
+
         if (!external) break;
 
         if (looksSelfContainedGetHandoff(external)) {
@@ -615,6 +636,14 @@ async function captureHttpRedirectHandoff(context, module, eportalOrigin) {
         type: "get",
         url: external.toString(),
       };
+    }
+
+    if (isTrustedLegacyHttpTarget(module, next)) {
+      console.log(
+        `[handoff] probe following trusted legacy HTTP hop for ${module.id}: ${next.hostname}${next.pathname}`,
+      );
+      current = next;
+      continue;
     }
 
     if (next.origin !== eportalOrigin) return null;
@@ -1073,11 +1102,28 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         );
 
         if (!handoffUrl) {
+          if (isTrustedLegacyHttpTarget(module, target)) {
+            await route.abort("aborted");
+
+            try {
+              const result = await discoverBareExternalGet(
+                context,
+                module,
+                target.toString(),
+                eportalOrigin,
+              );
+              finish(resolveHandoff, result);
+            } catch (error) {
+              finish(rejectHandoff, error);
+            }
+            return;
+          }
+
           if (target.protocol === "http:") {
             await route.abort("aborted");
 
             const error = new Error(
-              "Refusing a non-HTTPS external ePortal handoff outside NUTC domains.",
+              "Refusing a non-HTTPS external ePortal handoff outside the module-specific legacy allowlist.",
             );
             error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
             finish(rejectHandoff, error);
@@ -1193,13 +1239,34 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
             if (!handoffUrl) {
               // Chromium can pause synthetic/non-network documents such as
               // about:blank when a new page is created. Those are not SSO hops.
-              // Let them proceed instead of treating them as hostile handoffs.
               if (target.protocol !== "http:" && target.protocol !== "https:") {
                 await cdp
                   .send("Fetch.continueRequest", {
                     requestId: event.requestId,
                   })
                   .catch(() => {});
+                return;
+              }
+
+              if (isTrustedLegacyHttpTarget(module, target)) {
+                await cdp
+                  .send("Fetch.failRequest", {
+                    requestId: event.requestId,
+                    errorReason: "Aborted",
+                  })
+                  .catch(() => {});
+
+                try {
+                  const result = await discoverBareExternalGet(
+                    context,
+                    module,
+                    target.toString(),
+                    eportalOrigin,
+                  );
+                  finish(resolveHandoff, result);
+                } catch (error) {
+                  finish(rejectHandoff, error);
+                }
                 return;
               }
 
@@ -1212,7 +1279,7 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
               if (!settled) {
                 const error = new Error(
-                  `Refusing external ${target.protocol} handoff outside the allowed NUTC HTTPS flow (${target.hostname || "unknown-host"}).`,
+                  `Refusing external ${target.protocol} handoff outside the module-specific legacy allowlist (${target.hostname || "unknown-host"}).`,
                 );
                 error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
                 finish(rejectHandoff, error);
