@@ -356,12 +356,39 @@ closeButton.addEventListener("click", async () => {
   token = fragment.get("token") || "";
   history.replaceState(null, "", location.pathname + location.search);
 
-  if (!token) {
-    showError("缺少短效 Login Bridge token。請從 Dashboard 重新啟動 Server 登入。");
-    return;
-  }
-
   try {
+    if (!token) {
+      setStatus("checking", "正在啟動 Login Bridge", "Server 正在開啟 headless ePortal 登入頁…");
+
+      const response = await fetch("/api/login-bridge/start", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      });
+
+      const state = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(state.error || `Unable to start Login Bridge (${response.status}).`);
+      }
+
+      if (state.complete) {
+        render(state);
+        return;
+      }
+
+      if (!state.launchPath) {
+        throw new Error("Login Bridge did not return a launch path.");
+      }
+
+      location.replace(state.launchPath);
+      return;
+    }
+
     await refresh();
   } catch (error) {
     showError(error.message);
