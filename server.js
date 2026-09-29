@@ -39,6 +39,8 @@ const serverInstanceId =
 const serverStartedAt = Date.now();
 let restartScheduled = false;
 const preferenceStore = new PreferenceStore();
+const launchJobs = new Map();
+const launchJobTtlMs = 2 * 60_000;
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
 const loginBridgeTtlMinutes = Number(
   process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES ?? 15,
@@ -241,6 +243,159 @@ function handleBridgeError(res, error) {
   }
 
   return false;
+}
+
+function moduleForLaunch(moduleId) {
+  return publicModules().find((entry) => entry.id === moduleId) || null;
+}
+
+function updateLaunchJob(job, stage, detail) {
+  job.stage = stage;
+  job.detail = detail;
+  job.updatedAt = new Date().toISOString();
+}
+
+function launchTargetLabel(rawUrl) {
+  try {
+    const target = new URL(rawUrl, "http://local.invalid");
+    if (target.hostname === "local.invalid") return "local relay";
+    return target.hostname;
+  } catch {
+    return "target system";
+  }
+}
+
+function serializeLaunchJob(job) {
+  return {
+    id: job.id,
+    state: job.state,
+    stage: job.stage,
+    detail: job.detail,
+    startedAt: job.startedAt,
+    updatedAt: job.updatedAt,
+    elapsedMs: Math.max(0, Date.now() - job.startedAtMs),
+    module: job.module,
+    ...(job.target ? { target: job.target } : {}),
+    ...(job.error ? { error: job.error } : {}),
+  };
+}
+
+async function buildModuleLaunch(moduleId, onProgress) {
+  const handoff = await createModuleHandoff(moduleId, {
+    onProgress,
+  });
+
+  if (moduleId === "activity") {
+    onProgress?.({
+      stage: "activity-relay",
+      detail: "Preparing the local Activity relay for the captured handoff.",
+    });
+    const relay = await startActivityRelay(handoff);
+    return {
+      type: "get",
+      url: relay.launchPath,
+      target: "Activity relay",
+    };
+  }
+
+  if (handoff?.type === "get") {
+    return {
+      type: "get",
+      url: handoff.url,
+      target: launchTargetLabel(handoff.url),
+    };
+  }
+
+  if (handoff?.type === "post") {
+    return {
+      type: "post",
+      url: handoff.url,
+      fields: handoff.fields || [],
+      enctype:
+        handoff.enctype || "application/x-www-form-urlencoded",
+      target: launchTargetLabel(handoff.url),
+    };
+  }
+
+  throw Object.assign(
+    new Error("ePortal returned an unsupported handoff type."),
+    { code: "EPORTAL_HANDOFF_UNAVAILABLE" },
+  );
+}
+
+function startModuleLaunchJob(moduleId) {
+  const module = moduleForLaunch(moduleId);
+  if (!module) {
+    const error = new Error("Unknown ePortal module.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const id = crypto.randomBytes(16).toString("hex");
+  const now = new Date().toISOString();
+  const job = {
+    id,
+    module: {
+      id: module.id,
+      shortName: module.shortName,
+      name: module.name,
+      description: module.description,
+      icon: module.icon,
+    },
+    state: "running",
+    stage: "queued",
+    detail: "Launch request accepted by the Dashboard server.",
+    startedAt: now,
+    updatedAt: now,
+    startedAtMs: Date.now(),
+    result: null,
+    target: null,
+    error: null,
+  };
+
+  launchJobs.set(id, job);
+
+  const expiry = setTimeout(() => {
+    launchJobs.delete(id);
+  }, launchJobTtlMs);
+  expiry.unref?.();
+
+  void (async () => {
+    try {
+      const result = await buildModuleLaunch(moduleId, (progress) => {
+        if (!launchJobs.has(id)) return;
+        updateLaunchJob(
+          job,
+          progress?.stage || "working",
+          progress?.detail || "Server-side launch work is in progress.",
+        );
+      });
+
+      if (!launchJobs.has(id)) return;
+      job.result = result;
+      job.target = result.target || "target system";
+      job.state = "ready";
+      updateLaunchJob(
+        job,
+        "ready",
+        "SSO handoff is ready. Transferring it to this browser.",
+      );
+    } catch (error) {
+      if (!launchJobs.has(id)) return;
+      job.state = "error";
+      job.error = {
+        message: error?.message || "Module launch failed.",
+        code: error?.code || "MODULE_LAUNCH_FAILED",
+      };
+      updateLaunchJob(
+        job,
+        "error",
+        error?.message || "Module launch failed.",
+      );
+    }
+  })();
+
+  return job;
 }
 
 function restartServerProcess() {
@@ -479,6 +634,76 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const launchStartMatch =
+      req.method === "POST" &&
+      url.pathname.match(/^\/api\/launch\/([a-z0-9-]+)$/);
+
+    if (launchStartMatch) {
+      const job = startModuleLaunchJob(launchStartMatch[1]);
+      sendJson(res, 202, {
+        ok: true,
+        job: serializeLaunchJob(job),
+      });
+      return;
+    }
+
+    const launchStatusMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/api\/launch-job\/([a-f0-9]{32})$/);
+
+    if (launchStatusMatch) {
+      const job = launchJobs.get(launchStatusMatch[1]);
+      if (!job) {
+        sendError(res, 404, "Launch job not found or expired.");
+        return;
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        job: serializeLaunchJob(job),
+      });
+      return;
+    }
+
+    const launchConsumeMatch =
+      req.method === "POST" &&
+      url.pathname.match(/^\/api\/launch-job\/([a-f0-9]{32})\/consume$/);
+
+    if (launchConsumeMatch) {
+      const job = launchJobs.get(launchConsumeMatch[1]);
+
+      if (!job) {
+        sendError(res, 404, "Launch job not found or expired.");
+        return;
+      }
+
+      if (job.state === "error") {
+        sendError(
+          res,
+          502,
+          job.error?.message || "Module launch failed.",
+          job.error?.code,
+        );
+        return;
+      }
+
+      if (job.state !== "ready" || !job.result) {
+        sendError(res, 409, "Launch handoff is not ready yet.");
+        return;
+      }
+
+      const handoff = job.result;
+      sendJson(res, 200, {
+        ok: true,
+        handoff,
+      });
+
+      res.once("finish", () => {
+        launchJobs.delete(job.id);
+      });
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/sync") {
       sendJson(res, 200, preferenceStore.get());
       return;
@@ -499,71 +724,12 @@ const server = http.createServer(async (req, res) => {
       url.pathname.match(/^\/go\/([a-z0-9-]+)$/);
 
     if (goMatch) {
-      try {
-        const moduleId = goMatch[1];
-        const handoff = await createModuleHandoff(moduleId);
-
-        if (moduleId === "activity") {
-          const relay = await startActivityRelay(handoff);
-          redirect(res, relay.launchPath);
-          return;
-        }
-
-        if (handoff?.type === "get") {
-          redirect(res, handoff.url);
-          return;
-        }
-
-        if (handoff?.type === "post") {
-          sendPostHandoff(res, handoff);
-          return;
-        }
-
-        throw Object.assign(
-          new Error("ePortal returned an unsupported handoff type."),
-          { code: "EPORTAL_HANDOFF_UNAVAILABLE" },
-        );
-      } catch (error) {
-        if (error?.message === "Unknown ePortal module.") {
-          sendError(res, 404, error.message);
-          return;
-        }
-
-        if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
-          sendError(res, 503, error.message, error.code);
-          return;
-        }
-
-        if (
-          error?.code === "EPORTAL_HANDOFF_UNAVAILABLE" ||
-          error?.code === "EPORTAL_HANDOFF_SESSION_BOUND"
-        ) {
-          sendError(res, 502, error.message, error.code);
-          return;
-        }
-
-        if (
-          error?.code === "EPORTAL_HANDOFF_POST_REQUIRED" ||
-          error?.code === "EPORTAL_HANDOFF_POST_UNSUPPORTED" ||
-          error?.code === "ACTIVITY_RELAY_UNAVAILABLE" ||
-          error?.code?.startsWith("ACTIVITY_PROXY_")
-        ) {
-          sendError(res, 502, error.message, error.code);
-          return;
-        }
-
-        if (error?.code === "EPORTAL_PROFILE_BUSY") {
-          sendError(
-            res,
-            409,
-            "Server ePortal profile is busy, likely because interactive login is in progress.",
-            error.code,
-          );
-          return;
-        }
-
-        throw error;
+      if (!moduleForLaunch(goMatch[1])) {
+        sendError(res, 404, "Unknown ePortal module.");
+        return;
       }
+
+      await serveStatic(res, "/launch.html");
       return;
     }
 
