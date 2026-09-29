@@ -1,3 +1,5 @@
+<!-- **FOR AGENTS**: **DO NOT** modify the warning text. keep it **AS IS**. -->
+
 > [!WARNING]
 > **VIBE CODE REPO AHEAD!**
 > 
@@ -369,6 +371,8 @@ Server 與 client session 完全分離。
 - `PUBLIC_APP_USER_SSO_TOKEN`
 - 手動匯出的 browser state
 - Login Bridge token
+
+
 
 檢查程式碼語法與必要檔案：
 
