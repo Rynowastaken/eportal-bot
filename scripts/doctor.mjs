@@ -17,9 +17,11 @@ const required = [
   "public/index.html",
   "public/server-login.html",
   "public/server-login.js",
-  "public/server-login.css",
   "public/app.js",
-  "public/app.css",
+  "public/theme.js",
+  "public/tailwind-config.js",
+  "public/vendor/tailwindcss-3.4.17.js",
+  "public/vendor/lucide-1.24.0.min.js",
   "public/userscript/nutc-portal.user.js",
 ];
 
