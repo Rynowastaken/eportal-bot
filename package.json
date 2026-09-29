@@ -1,6 +1,6 @@
 {
   "name": "eportal-bot",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "private": true,
   "type": "module",
   "description": "Cloudflare Access protected NUTC dashboard with independent server-side ePortal Playwright session.",
