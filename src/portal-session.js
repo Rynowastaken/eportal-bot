@@ -400,6 +400,61 @@ export function startPortalKeepalive({ intervalMinutes = 10 } = {}) {
   return getPortalKeepaliveState();
 }
 
+async function captureHttpRedirectHandoff(context, module, eportalOrigin) {
+  let current = new URL(moduleUrl(module.id));
+  const visited = new Set();
+
+  for (let step = 0; step < 10; step += 1) {
+    if (visited.has(current.toString())) return null;
+    visited.add(current.toString());
+
+    const response = await context.request.get(current.toString(), {
+      maxRedirects: 0,
+      failOnStatusCode: false,
+      timeout: 12_000,
+      headers: {
+        Referer: EPORTAL_DASHBOARD,
+      },
+    });
+
+    const status = response.status();
+    const headers = response.headers();
+    const location = headers.location;
+
+    console.log(
+      `[handoff] probe ${module.id}: ${status} ${safeUrlLabel(current)}`,
+    );
+
+    if (![301, 302, 303, 307, 308].includes(status) || !location) {
+      return null;
+    }
+
+    let next;
+    try {
+      next = new URL(location, current);
+    } catch {
+      return null;
+    }
+
+    const external = normalizeExternalHandoffUrl(next, eportalOrigin);
+    if (external) {
+      console.log(
+        `[handoff] probe captured external redirect for ${module.id}: GET ${external.hostname}${external.pathname}`,
+      );
+
+      return {
+        type: "get",
+        url: external.toString(),
+      };
+    }
+
+    if (next.origin !== eportalOrigin) return null;
+    current = next;
+  }
+
+  return null;
+}
+
 export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
   const module = moduleById(moduleId);
 
@@ -452,6 +507,17 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
       }
 
       const eportalOrigin = new URL(EPORTAL_HOME).origin;
+
+      if (module.path.startsWith("/ext_module/")) {
+        const probed = await captureHttpRedirectHandoff(
+          context,
+          module,
+          eportalOrigin,
+        );
+
+        if (probed) return probed;
+      }
+
       const observed = {
         pages: new Set(),
         navigations: new Set(),
