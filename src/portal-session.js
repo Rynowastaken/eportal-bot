@@ -884,7 +884,10 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
             finish(resolveHandoff, result);
             return true;
-          } catch {
+          } catch (error) {
+            if (error?.code?.startsWith("EPORTAL_HANDOFF_")) {
+              finish(rejectHandoff, error);
+            }
             return false;
           }
         },
