@@ -207,6 +207,168 @@ function transferableHandoffFromRequest(request, handoffUrl) {
   };
 }
 
+
+function looksSelfContainedGetHandoff(rawUrl) {
+  const target = rawUrl instanceof URL ? rawUrl : new URL(rawUrl);
+
+  if (target.search || target.hash) return true;
+
+  return target.pathname
+    .split("/")
+    .filter(Boolean)
+    .some(
+      (segment) =>
+        segment.length >= 24 &&
+        /[A-Za-z]/.test(segment) &&
+        /\d/.test(segment),
+    );
+}
+
+async function discoverBareExternalGet(
+  context,
+  module,
+  rawUrl,
+  eportalOrigin,
+) {
+  let current = new URL(rawUrl);
+  let referer = moduleUrl(module.id);
+  const visited = new Set();
+
+  for (let step = 0; step < 8; step += 1) {
+    if (visited.has(current.toString())) break;
+    visited.add(current.toString());
+
+    const response = await context.request.get(current.toString(), {
+      maxRedirects: 0,
+      failOnStatusCode: false,
+      timeout: 12_000,
+      headers: {
+        Referer: referer,
+      },
+    });
+
+    const status = response.status();
+    console.log(
+      `[handoff] follow bare ${module.id}: ${status} ${safeUrlLabel(current)}`,
+    );
+
+    if ([301, 302, 303, 307, 308].includes(status)) {
+      const location = response.headers().location;
+      if (!location) break;
+
+      let next;
+      try {
+        next = new URL(location, current);
+      } catch {
+        break;
+      }
+
+      if (next.origin !== eportalOrigin) {
+        const external = normalizeExternalHandoffUrl(next, eportalOrigin);
+        if (!external) break;
+
+        if (looksSelfContainedGetHandoff(external)) {
+          console.log(
+            `[handoff] discovered transferable redirect for ${module.id}: GET ${external.hostname}${external.pathname}`,
+          );
+          return {
+            type: "get",
+            url: external.toString(),
+          };
+        }
+
+        referer = current.toString();
+        current = external;
+        continue;
+      }
+
+      referer = current.toString();
+      current = next;
+      continue;
+    }
+
+    const headers = response.headers();
+    const contentType = String(headers["content-type"] || "").toLowerCase();
+    const contentLength = Number(headers["content-length"] || 0);
+
+    if (
+      contentType.includes("text/html") &&
+      (!Number.isFinite(contentLength) ||
+        contentLength <= 512 * 1024)
+    ) {
+      try {
+        const html = await response.text();
+        const matches =
+          html.match(/https?:\/\/[^"'<>\s]+/gi) || [];
+
+        for (const rawCandidate of matches.slice(0, 80)) {
+          let candidate;
+          try {
+            candidate = new URL(rawCandidate.replaceAll("&amp;", "&"));
+          } catch {
+            continue;
+          }
+
+          const external = normalizeExternalHandoffUrl(
+            candidate,
+            eportalOrigin,
+          );
+
+          if (
+            external &&
+            looksSelfContainedGetHandoff(external)
+          ) {
+            console.log(
+              `[handoff] discovered transferable URL in target HTML for ${module.id}: GET ${external.hostname}${external.pathname}`,
+            );
+            return {
+              type: "get",
+              url: external.toString(),
+            };
+          }
+        }
+      } catch {
+        // Body inspection is best effort; redirect-chain analysis is primary.
+      }
+    }
+
+    const cookieScopes = [
+      ...new Set(
+        (await context.cookies())
+          .map((cookie) => cookie.domain)
+          .filter(
+            (domain) =>
+              domain === "nutc.edu.tw" ||
+              domain === ".nutc.edu.tw" ||
+              domain.endsWith(".nutc.edu.tw"),
+          ),
+      ),
+    ].sort();
+
+    const error = new Error(
+      `ePortal reached ${safeUrlLabel(current)} without exposing a transferable SSO URL or form. The captured bare GET is bound to the server-side browser/session flow, so redirecting that URL to the client does not carry authentication.`,
+    );
+    error.code = "EPORTAL_HANDOFF_SESSION_BOUND";
+    error.diagnostics = {
+      final: safeUrlLabel(current),
+      status,
+      cookieScopes,
+    };
+
+    console.log(
+      `[handoff] bare GET for ${module.id} is not transferable; final=${error.diagnostics.final}; status=${status}; cookie-scopes=${cookieScopes.join(",") || "none"}`,
+    );
+
+    throw error;
+  }
+
+  const error = new Error(
+    "ePortal produced a bare external GET handoff, but no transferable SSO material was found in its redirect chain.",
+  );
+  error.code = "EPORTAL_HANDOFF_SESSION_BOUND";
+  throw error;
+}
+
 async function profileExists() {
   try {
     const stat = await fs.stat(EPORTAL_PROFILE_DIR);
@@ -438,6 +600,13 @@ async function captureHttpRedirectHandoff(context, module, eportalOrigin) {
 
     const external = normalizeExternalHandoffUrl(next, eportalOrigin);
     if (external) {
+      if (!looksSelfContainedGetHandoff(external)) {
+        console.log(
+          `[handoff] probe found bare external endpoint for ${module.id}: ${external.hostname}${external.pathname}; deferring to browser-stage discovery`,
+        );
+        return null;
+      }
+
       console.log(
         `[handoff] probe captured external redirect for ${module.id}: GET ${external.hostname}${external.pathname}`,
       );
@@ -589,6 +758,16 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
           if (!result) return;
 
+          if (
+            result.type === "get" &&
+            !looksSelfContainedGetHandoff(result.url)
+          ) {
+            console.log(
+              `[handoff] saw bare external redirect for ${module.id}: ${handoffUrl.hostname}${handoffUrl.pathname}; waiting for request-stage discovery`,
+            );
+            return;
+          }
+
           console.log(
             `[handoff] captured external redirect for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
           );
@@ -685,6 +864,18 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
               };
             } else {
               return false;
+            }
+
+            if (
+              result.type === "get" &&
+              !looksSelfContainedGetHandoff(result.url)
+            ) {
+              result = await discoverBareExternalGet(
+                context,
+                module,
+                result.url,
+                eportalOrigin,
+              );
             }
 
             console.log(
@@ -910,6 +1101,23 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
           return;
         }
 
+        if (
+          result.type === "get" &&
+          !looksSelfContainedGetHandoff(result.url)
+        ) {
+          try {
+            result = await discoverBareExternalGet(
+              context,
+              module,
+              result.url,
+              eportalOrigin,
+            );
+          } catch (error) {
+            finish(rejectHandoff, error);
+            return;
+          }
+        }
+
         console.log(
           `[handoff] captured external navigation for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
         );
@@ -1073,6 +1281,23 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
                 errorReason: "Aborted",
               })
               .catch(() => {});
+
+            if (
+              result.type === "get" &&
+              !looksSelfContainedGetHandoff(result.url)
+            ) {
+              try {
+                result = await discoverBareExternalGet(
+                  context,
+                  module,
+                  result.url,
+                  eportalOrigin,
+                );
+              } catch (error) {
+                finish(rejectHandoff, error);
+                return;
+              }
+            }
 
             console.log(
               `[handoff] captured preflight document for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
