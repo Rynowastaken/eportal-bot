@@ -15,6 +15,52 @@ npx playwright install chromium
 npm run doctor
 ```
 
+## Remote login from mobile or desktop
+
+Normal Dashboard operation stays fully headless. When ePortal requires an interactive
+re-login, install Xpra plus its HTML5 client on the server and run:
+
+```bash
+DASHBOARD_URL=https://your-dashboard.example.com npm run login:remote
+```
+
+The command starts a temporary Xpra seamless session bound only to
+`127.0.0.1:14500`, then launches the same Playwright Chromium profile used by the
+server. It prints a temporary URL under `/remote-login/`.
+
+The remote page is responsive: on phones it collapses the controls and dedicates most
+of the dynamic viewport to Chromium; on desktop it expands into a wide centered viewer.
+
+Bandwidth presets are available in the page:
+
+```text
+256 kbps  low-data
+512 kbps  default
+1 Mbps    smoother
+```
+
+You can also choose the default from SSH:
+
+```bash
+EPORTAL_REMOTE_BANDWIDTH_KBPS=256 npm run login:remote
+```
+
+Other useful settings:
+
+```bash
+EPORTAL_REMOTE_TTL_MINUTES=20 npm run login:remote
+EPORTAL_REMOTE_PORT=14501 EPORTAL_REMOTE_DISPLAY=:101 npm run login:remote
+```
+
+Audio, clipboard sync, file transfer, printing, webcam, notifications, bell forwarding,
+and mDNS are disabled for the temporary Xpra session. The Xpra listener is localhost
+only; the browser reaches it through the Dashboard's HTTP/WebSocket reverse proxy.
+
+The session closes when login succeeds, when the command is interrupted, or when its
+login timeout expires. Keep the Dashboard origin behind Cloudflare Access; the remote
+viewer can control the server-side Chromium session and should be treated as privileged
+access.
+
 ## First server login
 
 第一次在 server 主機執行：
@@ -49,6 +95,7 @@ GET /api/portal-status
 
 ```text
 valid
+busy
 needs-login
 not-configured
 error
