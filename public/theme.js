@@ -613,6 +613,46 @@
     store(brightnessKey, String(settings.brightness));
   }
 
+  async function fetchServerPreferences() {
+    const response = await fetch("/api/preferences", {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Unable to load server preferences (${response.status}).`,
+      );
+    }
+
+    return response.json();
+  }
+
+  async function saveServerBackground(backgroundDataUrl) {
+    const response = await fetch("/api/preferences/background", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ backgroundDataUrl }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error ||
+          `Unable to save background on the server (${response.status}).`,
+      );
+    }
+
+    return data;
+  }
+
   function previewSettings(settings) {
     return paletteForScheme(
       currentSourcePalette,
@@ -642,10 +682,15 @@
       reader.readAsDataURL(file);
     });
 
-    currentBackground = await prepareBackground(dataUrl);
-    const extracted = await extractPalette(currentBackground);
+    const prepared = await prepareBackground(dataUrl);
+    const extracted = await extractPalette(prepared);
+    const saved = await saveServerBackground(prepared);
 
-    store(backgroundKey, currentBackground);
+    currentBackground =
+      saved?.appearance?.backgroundUrl || prepared;
+
+    // Remove the old browser-local image once it has been persisted server-side.
+    store(backgroundKey, "");
     store(paletteKey, JSON.stringify(extracted));
     applyBackdrop(currentBackground);
     applyPalette(extracted);
@@ -656,7 +701,9 @@
     };
   }
 
-  function clearBackground() {
+  async function clearBackground() {
+    await saveServerBackground("");
+
     currentBackground = "";
     store(backgroundKey, "");
     store(paletteKey, "");
@@ -665,22 +712,58 @@
   }
 
   async function init() {
-    currentBackground = readStored(backgroundKey, "");
     currentSettings = readThemeSettings();
     let source = defaults;
+    let loadedFromServer = false;
 
     try {
-      const storedPalette = JSON.parse(readStored(paletteKey, "null"));
-      if (Array.isArray(storedPalette) && storedPalette.length >= 5) {
-        source = storedPalette;
-      } else if (currentBackground) {
+      const preferences = await fetchServerPreferences();
+      const appearance = preferences?.appearance || {};
+      const legacyBackground = readStored(backgroundKey, "");
+
+      if (!appearance.initialized && legacyBackground) {
+        const migrated = await saveServerBackground(legacyBackground);
+        currentBackground =
+          migrated?.appearance?.backgroundUrl || legacyBackground;
+      } else {
+        currentBackground = appearance.backgroundUrl || "";
+      }
+
+      store(backgroundKey, "");
+      loadedFromServer = true;
+
+      if (currentBackground) {
         source = await extractPalette(currentBackground);
         store(paletteKey, JSON.stringify(source));
+      } else {
+        store(paletteKey, "");
       }
     } catch {
-      source = currentBackground
-        ? await extractPalette(currentBackground)
-        : defaults;
+      // Keep a local fallback so the UI remains usable if the server is
+      // temporarily unavailable, but new writes always target the server.
+      currentBackground = readStored(backgroundKey, "");
+
+      try {
+        const storedPalette = JSON.parse(
+          readStored(paletteKey, "null"),
+        );
+        if (
+          Array.isArray(storedPalette) &&
+          storedPalette.length >= 5
+        ) {
+          source = storedPalette;
+        } else if (currentBackground) {
+          source = await extractPalette(currentBackground);
+        }
+      } catch {
+        source = currentBackground
+          ? await extractPalette(currentBackground)
+          : defaults;
+      }
+    }
+
+    if (loadedFromServer && !currentBackground) {
+      source = defaults;
     }
 
     applyBackdrop(currentBackground);
