@@ -2,6 +2,9 @@ const moduleGrid = document.querySelector("#moduleGrid");
 const serverStatusButton = document.querySelector("#serverStatusButton");
 const serverStatusDot = document.querySelector("#serverStatusDot");
 const serverStatusText = document.querySelector("#serverStatusText");
+const serverStatusMenu = document.querySelector("#serverStatusMenu");
+const serverLoginAction = document.querySelector("#serverLoginAction");
+const serverLogoutAction = document.querySelector("#serverLogoutAction");
 
 const icons = {
   "graduation-cap": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-5 9 5-9 5-9-5zM7 11v5c3 2 7 2 10 0v-5M21 9v6"/></svg>`,
@@ -32,7 +35,8 @@ function setServerStatus(status) {
 
   let kind = "invalid";
   let label = "需登入";
-  let detail = "點此登入 Server ePortal";
+  let detail = "Server ePortal 尚未登入";
+  let canLogout = false;
 
   if (bridgeActive || state === "busy") {
     kind = "checking";
@@ -41,7 +45,8 @@ function setServerStatus(status) {
   } else if (state === "valid") {
     kind = "valid";
     label = "已連線";
-    detail = "Server ePortal 已登入；點此可重新登入";
+    detail = "Server ePortal 已登入";
+    canLogout = true;
   } else if (state === "error") {
     kind = "invalid";
     label = "重試";
@@ -52,6 +57,9 @@ function setServerStatus(status) {
   serverStatusText.textContent = label;
   serverStatusButton.title = detail;
   serverStatusButton.setAttribute("aria-label", detail);
+
+  serverLoginAction.textContent = canLogout ? "重新登入" : "登入";
+  serverLogoutAction.classList.toggle("hidden", !canLogout);
 }
 
 function openModule(module) {
@@ -101,8 +109,66 @@ function showLoadError(message) {
   moduleGrid.append(card);
 }
 
-serverStatusButton.addEventListener("click", () => {
+function setServerMenuOpen(open) {
+  serverStatusMenu.classList.toggle("hidden", !open);
+  serverStatusButton.setAttribute("aria-expanded", String(open));
+}
+
+serverStatusButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const open = serverStatusButton.getAttribute("aria-expanded") === "true";
+  setServerMenuOpen(!open);
+});
+
+serverLoginAction.addEventListener("click", () => {
   window.location.assign("/server-login/");
+});
+
+serverLogoutAction.addEventListener("click", async () => {
+  if (serverLogoutAction.disabled) return;
+
+  serverLogoutAction.disabled = true;
+  serverLogoutAction.textContent = "登出中…";
+
+  try {
+    const response = await fetch("/api/portal-logout", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error || `Logout failed (${response.status})`);
+    }
+
+    setServerStatus({
+      status: data.status || "needs-login",
+      loginBridge: { active: false },
+    });
+    setServerMenuOpen(false);
+  } catch (error) {
+    console.error("Server ePortal logout failed:", error);
+    serverStatusButton.title = error.message;
+  } finally {
+    serverLogoutAction.disabled = false;
+    serverLogoutAction.textContent = "登出";
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".server-menu")) {
+    setServerMenuOpen(false);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    setServerMenuOpen(false);
+    serverStatusButton.focus();
+  }
 });
 
 (async () => {
