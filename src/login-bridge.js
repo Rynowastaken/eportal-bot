@@ -92,15 +92,14 @@ async function closeActive() {
 async function loginComplete(page) {
   const url = new URL(page.url());
   const dashboardUrl = new URL(EPORTAL_DASHBOARD);
+  const hasStudentButton =
+    (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
-  if (
+  return (
     url.hostname === dashboardUrl.hostname &&
-    url.pathname.startsWith("/nutc_dashboard/")
-  ) {
-    return true;
-  }
-
-  return (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+    url.pathname.startsWith("/nutc_dashboard/") &&
+    hasStudentButton
+  );
 }
 
 async function ensureAllowed(page) {
