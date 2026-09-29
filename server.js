@@ -1,10 +1,18 @@
 import fsp from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
+import {
+  REMOTE_LOGIN_COOKIE,
+  getRemoteLoginStatus,
+  isRemoteLoginRequestAuthorized,
+  readRemoteLoginState,
+  validateRemoteLoginToken,
+} from "./src/remote-login.js";
 import {
   checkServerPortalStatus,
   createModuleHandoff,
@@ -67,6 +75,175 @@ function redirect(res, location) {
     "X-Content-Type-Options": "nosniff",
   });
   res.end();
+}
+
+function requestIsSecure(req) {
+  const forwarded = String(req.headers["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+
+  return forwarded === "https" || Boolean(req.socket.encrypted);
+}
+
+function setRemoteLoginCookie(req, res, token, expiresAt) {
+  const maxAge = Math.max(
+    0,
+    Math.floor((Date.parse(expiresAt) - Date.now()) / 1000),
+  );
+  const secure = requestIsSecure(req) ? "; Secure" : "";
+
+  res.setHeader(
+    "Set-Cookie",
+    `${REMOTE_LOGIN_COOKIE}=${encodeURIComponent(token)}; Path=/remote-login/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`,
+  );
+}
+
+function remoteLoginTargetPath(url) {
+  const prefix = "/remote-login/xpra";
+  let pathname = url.pathname.slice(prefix.length);
+  if (!pathname) pathname = "/";
+  if (!pathname.startsWith("/")) pathname = `/${pathname}`;
+  return `${pathname}${url.search}`;
+}
+
+function safeProxyRequestHeaders(req, state) {
+  const allowed = [
+    "accept",
+    "accept-encoding",
+    "accept-language",
+    "cache-control",
+    "pragma",
+    "user-agent",
+  ];
+  const headers = {
+    Host: `127.0.0.1:${state.port}`,
+    "X-Forwarded-Prefix": "/remote-login/xpra",
+  };
+
+  for (const name of allowed) {
+    const value = req.headers[name];
+    if (value !== undefined) headers[name] = value;
+  }
+
+  return headers;
+}
+
+async function proxyRemoteLoginHttp(req, res, url) {
+  if (!(await isRemoteLoginRequestAuthorized(req))) {
+    sendError(res, 401, "Remote login authorization required.");
+    return;
+  }
+
+  const state = await readRemoteLoginState();
+  if (!state) {
+    sendError(res, 503, "Remote login session is not active.");
+    return;
+  }
+
+  const proxyReq = http.request(
+    {
+      hostname: "127.0.0.1",
+      port: state.port,
+      path: remoteLoginTargetPath(url),
+      method: req.method,
+      headers: safeProxyRequestHeaders(req, state),
+    },
+    (proxyRes) => {
+      const headers = { ...proxyRes.headers };
+      delete headers["set-cookie"];
+
+      if (typeof headers.location === "string" && headers.location.startsWith("/")) {
+        headers.location = `/remote-login/xpra${headers.location}`;
+      }
+
+      res.writeHead(proxyRes.statusCode || 502, headers);
+      proxyRes.pipe(res);
+    },
+  );
+
+  proxyReq.on("error", () => {
+    if (!res.headersSent) {
+      sendError(res, 502, "Remote Xpra session is unavailable.");
+    } else {
+      res.end();
+    }
+  });
+
+  req.pipe(proxyReq);
+}
+
+function writeUpgradeError(socket, status, message) {
+  const body = Buffer.from(message);
+  socket.end(
+    `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.length}\r\n\r\n${message}`,
+  );
+}
+
+async function proxyRemoteLoginUpgrade(req, socket, head) {
+  const url = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "localhost"}`,
+  );
+
+  if (!url.pathname.startsWith("/remote-login/xpra")) {
+    writeUpgradeError(socket, "404 Not Found", "Not found.");
+    return;
+  }
+
+  if (!(await isRemoteLoginRequestAuthorized(req))) {
+    writeUpgradeError(socket, "401 Unauthorized", "Remote login authorization required.");
+    return;
+  }
+
+  const state = await readRemoteLoginState();
+  if (!state) {
+    writeUpgradeError(socket, "503 Service Unavailable", "Remote login session is not active.");
+    return;
+  }
+
+  const backend = net.createConnection({
+    host: "127.0.0.1",
+    port: state.port,
+  });
+
+  backend.once("error", () => {
+    writeUpgradeError(socket, "502 Bad Gateway", "Remote Xpra session is unavailable.");
+  });
+
+  backend.once("connect", () => {
+    const lines = [
+      `${req.method || "GET"} ${remoteLoginTargetPath(url)} HTTP/${req.httpVersion}`,
+    ];
+
+    for (let index = 0; index < req.rawHeaders.length; index += 2) {
+      const name = req.rawHeaders[index];
+      const value = req.rawHeaders[index + 1];
+      const lower = name.toLowerCase();
+
+      if (
+        lower === "host" ||
+        lower === "cookie" ||
+        lower.startsWith("cf-") ||
+        lower === "x-forwarded-for" ||
+        lower === "x-forwarded-host" ||
+        lower === "x-forwarded-proto"
+      ) {
+        continue;
+      }
+
+      lines.push(`${name}: ${value}`);
+    }
+
+    lines.push(`Host: 127.0.0.1:${state.port}`);
+    lines.push("X-Forwarded-Prefix: /remote-login/xpra");
+    lines.push("", "");
+
+    backend.write(lines.join("\r\n"));
+    if (head?.length) backend.write(head);
+
+    socket.pipe(backend).pipe(socket);
+  });
 }
 
 function contentType(filePath) {
@@ -138,6 +315,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/remote-login/status") {
+      const authorized = await isRemoteLoginRequestAuthorized(req);
+      sendJson(res, 200, await getRemoteLoginStatus({ authorized }));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/remote-login/authorize") {
+      const state = await readRemoteLoginState();
+      if (!state) {
+        sendError(res, 503, "Remote login session is not active.");
+        return;
+      }
+
+      const body = await readJsonBody(req, 8 * 1024);
+      const token = typeof body.token === "string" ? body.token : "";
+
+      if (!(await validateRemoteLoginToken(token))) {
+        sendError(res, 401, "Invalid or expired remote login token.");
+        return;
+      }
+
+      setRemoteLoginCookie(req, res, token, state.expiresAt);
+      sendJson(res, 200, {
+        ok: true,
+        expiresAt: state.expiresAt,
+        bandwidthKbps: state.bandwidthKbps,
+      });
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/modules") {
       sendJson(res, 200, { modules: publicModules() });
       return;
@@ -179,6 +386,15 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        if (error?.code === "EPORTAL_PROFILE_BUSY") {
+          sendError(
+            res,
+            409,
+            "Server ePortal profile is busy, likely because remote login is in progress.",
+          );
+          return;
+        }
+
         throw error;
       }
       return;
@@ -186,6 +402,19 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith("/api/")) {
       sendError(res, 404, "API route not found.");
+      return;
+    }
+
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/remote-login" || url.pathname === "/remote-login/")
+    ) {
+      await serveStatic(res, "/remote-login.html");
+      return;
+    }
+
+    if (url.pathname.startsWith("/remote-login/xpra")) {
+      await proxyRemoteLoginHttp(req, res, url);
       return;
     }
 
@@ -198,6 +427,12 @@ const server = http.createServer(async (req, res) => {
       res.end();
     }
   }
+});
+
+server.on("upgrade", (req, socket, head) => {
+  void proxyRemoteLoginUpgrade(req, socket, head).catch(() => {
+    writeUpgradeError(socket, "500 Internal Server Error", "Remote login proxy failed.");
+  });
 });
 
 await preferenceStore.init();
