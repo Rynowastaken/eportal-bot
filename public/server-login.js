@@ -19,8 +19,20 @@ let completionPollTimer = null;
 let completionPollUntil = 0;
 const objectUrls = new Set();
 
+function renderIcons() {
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
 function setStatus(kind, title) {
-  statusDot.className = `status-dot ${kind}`;
+  const colors = {
+    checking: "var(--accent)",
+    valid: "#7fd5ad",
+    invalid: "#f07178",
+  };
+
+  statusDot.style.backgroundColor = colors[kind] || "var(--accent)";
   statusTitle.textContent = title;
 }
 
@@ -42,11 +54,7 @@ function isLoginSubmitAction(activate, pressEnter) {
 
   if (!control) return false;
 
-  const text = [
-    control.text,
-    control.label,
-    control.name,
-  ]
+  const text = [control.text, control.label, control.name]
     .filter(Boolean)
     .join(" ");
 
@@ -103,8 +111,11 @@ async function bridgeApi(path, options = {}) {
   });
 
   const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw new Error(data.error || `Bridge request failed (${response.status}).`);
+    throw new Error(
+      data.error || `Bridge request failed (${response.status}).`,
+    );
   }
 
   return data;
@@ -131,12 +142,14 @@ async function loadImages(images) {
       );
 
       if (!response.ok) continue;
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       objectUrls.add(url);
 
       const image = document.createElement("img");
-      image.className = "bridge-image";
+      image.className =
+        "max-h-40 max-w-full rounded-xl border border-white/[.12] bg-white p-1 object-contain shadow-sm";
       image.src = url;
       image.alt = item.alt || "ePortal verification image";
       image.width = item.width || 0;
@@ -167,17 +180,20 @@ function inputType(control) {
 
 function makeField(control) {
   const row = document.createElement("div");
-  row.className = "field-row";
+  row.className = "grid gap-1.5";
 
   if (control.type === "checkbox" || control.type === "radio") {
     const label = document.createElement("label");
-    label.className = "check-row";
+    label.className =
+      "flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border border-white/[.12] bg-white/[.06] px-3 py-2.5 text-sm font-semibold transition hover:border-white/[.18] hover:bg-white/[.09]";
 
     const input = document.createElement("input");
     input.type = control.type;
     input.checked = Boolean(control.checked);
     input.disabled = Boolean(control.disabled);
     input.dataset.bridgeKey = control.key;
+    input.className =
+      "h-5 w-5 shrink-0 accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
 
     const text = document.createElement("span");
     text.textContent = control.label || control.name || control.type;
@@ -189,13 +205,13 @@ function makeField(control) {
 
   const label = document.createElement("label");
   label.htmlFor = `bridge-${control.key}`;
+  label.className = "text-sm font-semibold text-[var(--muted)]";
   label.textContent = control.label || control.name || "欄位";
 
   let input;
 
   if (control.tag === "select") {
     input = document.createElement("select");
-    input.className = "bridge-select";
 
     for (const option of control.options || []) {
       const node = document.createElement("option");
@@ -206,15 +222,16 @@ function makeField(control) {
     }
   } else if (control.tag === "textarea") {
     input = document.createElement("textarea");
-    input.className = "bridge-textarea";
     input.value = control.value || "";
+    input.classList.add("min-h-28", "resize-y");
   } else {
     input = document.createElement("input");
-    input.className = "bridge-input";
     input.type = inputType(control);
     input.value = control.value || "";
     input.placeholder = control.placeholder || "";
+
     if (control.inputMode) input.inputMode = control.inputMode;
+
     if (control.autocomplete) {
       input.autocomplete = control.autocomplete;
     } else if (control.type === "password") {
@@ -222,6 +239,8 @@ function makeField(control) {
     }
   }
 
+  input.className +=
+    " min-h-12 w-full rounded-xl border border-white/[.12] bg-black/20 px-3 py-2.5 text-base font-semibold text-[var(--foreground)] outline-none transition placeholder:text-white/35 focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary-soft)] disabled:cursor-not-allowed disabled:opacity-50";
   input.id = `bridge-${control.key}`;
   input.dataset.bridgeKey = control.key;
   input.disabled = Boolean(control.disabled);
@@ -236,12 +255,16 @@ function makeField(control) {
 function makeAction(control, index) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "bridge-action";
-  if (index > 0) button.classList.add("secondary");
   button.dataset.activateKey = control.key;
   button.textContent =
     control.text || control.label || (index === 0 ? "繼續" : "操作");
   button.disabled = Boolean(control.disabled);
+
+  button.className =
+    index === 0
+      ? "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-55"
+      : "min-h-[46px] rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-55";
+
   button.addEventListener("click", () => submitAction(control.key));
   return button;
 }
@@ -263,6 +286,21 @@ function collectFields() {
   return fields;
 }
 
+function leaveLoginPage() {
+  setTimeout(() => {
+    if (window.opener && !window.opener.closed) {
+      window.close();
+
+      setTimeout(() => {
+        if (!window.closed) location.replace("/");
+      }, 120);
+      return;
+    }
+
+    location.replace("/");
+  }, 250);
+}
+
 function render(state) {
   lastState = state;
 
@@ -277,20 +315,7 @@ function render(state) {
     errorCard.classList.add("hidden");
     setStatus("valid", "登入完成");
     disposeImages();
-
-    setTimeout(() => {
-      if (window.opener && !window.opener.closed) {
-        window.close();
-
-        // If the browser refuses to close the tab, fall back to the Dashboard.
-        setTimeout(() => {
-          if (!window.closed) location.replace("/");
-        }, 120);
-        return;
-      }
-
-      location.replace("/");
-    }, 250);
+    leaveLoginPage();
     return;
   }
 
@@ -321,13 +346,14 @@ function render(state) {
 
   errorCard.classList.add("hidden");
   pageCard.classList.remove("hidden");
-
   pageTitle.textContent = state.page.title || "ePortal";
 
   messageList.replaceChildren();
+
   for (const message of state.page.messages || []) {
     const item = document.createElement("div");
-    item.className = "bridge-message";
+    item.className =
+      "rounded-xl border border-white/[.10] bg-white/[.06] px-3 py-2.5 text-sm font-medium leading-6 text-[var(--muted)]";
     item.textContent = message;
     messageList.append(item);
   }
@@ -360,13 +386,13 @@ function render(state) {
   if (!actions.length && fields.length) {
     const enter = document.createElement("button");
     enter.type = "submit";
-    enter.className = "bridge-action";
+    enter.className =
+      "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
     enter.textContent = "繼續";
     actionList.append(enter);
   }
 
   void loadImages(state.page.images || []);
-
   setStatus("valid", "請完成登入");
 
   const firstEditable = fieldList.querySelector(
@@ -385,6 +411,7 @@ async function refresh() {
 
 async function submitAction(activate = null, pressEnter = false) {
   if (busy) return;
+
   busy = true;
   const watchForCompletion = isLoginSubmitAction(activate, pressEnter);
 
@@ -430,6 +457,7 @@ function showError(message) {
   errorMessage.textContent = message;
   setStatus("invalid", "登入失敗");
   disposeImages();
+  renderIcons();
 }
 
 bridgeForm.addEventListener("submit", (event) => {
@@ -460,6 +488,9 @@ closeButton.addEventListener("click", async () => {
 });
 
 (async () => {
+  await window.NutcTheme.init();
+  renderIcons();
+
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
   token = fragment.get("token") || "";
   history.replaceState(null, "", location.pathname + location.search);
@@ -480,8 +511,12 @@ closeButton.addEventListener("click", async () => {
       });
 
       const state = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error(state.error || `Unable to start Login Bridge (${response.status}).`);
+        throw new Error(
+          state.error ||
+            `Unable to start Login Bridge (${response.status}).`,
+        );
       }
 
       if (state.complete) {
