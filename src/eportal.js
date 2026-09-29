@@ -61,8 +61,18 @@ export const MODULES = Object.freeze([
   },
 ]);
 
+const MODULES_BY_ID = new Map(MODULES.map((module) => [module.id, module]));
+const PUBLIC_MODULES = Object.freeze(
+  MODULES.map(({ path, ...module }) =>
+    Object.freeze({
+      ...module,
+      launchPath: `/go/${module.id}`,
+    }),
+  ),
+);
+
 export function moduleById(moduleId) {
-  const module = MODULES.find((entry) => entry.id === moduleId);
+  const module = MODULES_BY_ID.get(moduleId);
   if (!module) throw new Error("Unknown ePortal module.");
   return module;
 }
@@ -72,8 +82,5 @@ export function moduleUrl(moduleId) {
 }
 
 export function publicModules() {
-  return MODULES.map(({ path, ...module }) => ({
-    ...module,
-    launchPath: `/go/${module.id}`,
-  }));
+  return PUBLIC_MODULES;
 }
