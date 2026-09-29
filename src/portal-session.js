@@ -261,6 +261,81 @@ async function openModuleWithServerSession(moduleId, { headless = true, timeout 
   }
 }
 
+export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
+  moduleById(moduleId);
+
+  if (!(await profileExists())) {
+    const error = new Error("Server ePortal profile is not configured. Run: npm run login");
+    error.code = "EPORTAL_LOGIN_REQUIRED";
+    throw error;
+  }
+
+  return withProfileLock(async () => {
+    let context;
+
+    try {
+      context = await openServerPortalSession({ headless: true });
+      const page = context.pages()[0] || (await context.newPage());
+
+      await page.goto(EPORTAL_DASHBOARD, {
+        waitUntil: "domcontentloaded",
+        timeout,
+      });
+
+      const loggedIn =
+        (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+
+      if (!loggedIn) {
+        const error = new Error("Server ePortal session expired. Run: npm run login");
+        error.code = "EPORTAL_LOGIN_REQUIRED";
+        throw error;
+      }
+
+      const eportalOrigin = new URL(EPORTAL_HOME).origin;
+      let currentUrl = moduleUrl(moduleId);
+
+      for (let hop = 0; hop < 10; hop += 1) {
+        const response = await context.request.get(currentUrl, {
+          maxRedirects: 0,
+          timeout,
+          failOnStatusCode: false,
+        });
+
+        const status = response.status();
+        const location = response.headers().location;
+
+        if (![301, 302, 303, 307, 308].includes(status) || !location) {
+          const error = new Error(
+            "ePortal did not return a transferable SSO redirect for this module.",
+          );
+          error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+          throw error;
+        }
+
+        const nextUrl = new URL(location, currentUrl);
+
+        if (nextUrl.protocol !== "https:") {
+          const error = new Error("Refusing non-HTTPS ePortal handoff.");
+          error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+          throw error;
+        }
+
+        if (nextUrl.origin !== eportalOrigin) {
+          return nextUrl.toString();
+        }
+
+        currentUrl = nextUrl.toString();
+      }
+
+      const error = new Error("Too many internal ePortal redirects.");
+      error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+      throw error;
+    } finally {
+      if (context) await context.close().catch(() => {});
+    }
+  });
+}
+
 export async function fetchModuleOverview(moduleId, { timeout = 30_000 } = {}) {
   const module = moduleById(moduleId);
 
