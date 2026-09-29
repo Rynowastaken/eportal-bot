@@ -5,7 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { EPORTAL_ORIGIN, moduleUrl, publicModules } from "./src/eportal.js";
 import { PreferenceStore } from "./src/preference-store.js";
-import { checkServerPortalStatus, fetchAisOverview } from "./src/portal-session.js";
+import { checkServerPortalStatus, fetchAisOverview, fetchModuleOverview } from "./src/portal-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -136,6 +136,31 @@ const server = http.createServer(async (req, res) => {
             code: error.code,
             needsLogin: true,
           });
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
+    const moduleOverviewMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/api\/modules\/([a-z0-9-]+)\/overview$/);
+
+    if (moduleOverviewMatch) {
+      try {
+        sendJson(res, 200, await fetchModuleOverview(moduleOverviewMatch[1]));
+      } catch (error) {
+        if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
+          sendJson(res, 503, {
+            error: error.message,
+            code: error.code,
+            needsLogin: true,
+          });
+          return;
+        }
+        if (error?.message === "Unknown ePortal module.") {
+          sendError(res, 404, error.message);
           return;
         }
         throw error;
