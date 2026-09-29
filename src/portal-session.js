@@ -339,11 +339,11 @@ export function startPortalKeepalive({ intervalMinutes = 10 } = {}) {
 }
 
 export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
-  moduleById(moduleId);
+  const module = moduleById(moduleId);
 
   if (!(await profileExists())) {
     const error = new Error(
-      "Server ePortal profile is not configured. Run: npm run login",
+      "Server ePortal profile is not configured. Use the Server ePortal login bridge first.",
     );
     error.code = "EPORTAL_LOGIN_REQUIRED";
     throw error;
@@ -353,67 +353,155 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
     let context;
 
     try {
-      context = await openServerPortalSession({ headless: true });
-      const page = context.pages()[0] || (await context.newPage());
+      context = await openServerPortalSession({
+        headless: true,
+        launchTimeout: 15_000,
+      });
 
-      await page.goto(EPORTAL_DASHBOARD, {
+      const dashboard =
+        context.pages()[0] || (await context.newPage());
+
+      await dashboard.goto(EPORTAL_DASHBOARD, {
         waitUntil: "domcontentloaded",
         timeout,
       });
 
       const loggedIn =
-        (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+        (await dashboard.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
       if (!loggedIn) {
         const error = new Error(
-          "Server ePortal session expired. Run: npm run login",
+          "Server ePortal session expired. Use the Server ePortal login bridge.",
         );
         error.code = "EPORTAL_LOGIN_REQUIRED";
         throw error;
       }
 
-      const eportalOrigin = new URL(EPORTAL_HOME).origin;
-      let currentUrl = moduleUrl(moduleId);
-      let referer = EPORTAL_DASHBOARD;
+      const button = dashboard.locator(
+        `button[data-item-uuid="${module.uuid}"]`,
+      );
 
-      for (let hop = 0; hop < 10; hop += 1) {
-        const response = await context.request.get(currentUrl, {
-          headers: { Referer: referer },
-          maxRedirects: 0,
-          timeout,
-          failOnStatusCode: false,
-        });
-
-        const status = response.status();
-        const location = response.headers().location;
-
-        if (![301, 302, 303, 307, 308].includes(status) || !location) {
-          const error = new Error(
-            "ePortal did not return a transferable SSO redirect for this module.",
-          );
-          error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
-          throw error;
-        }
-
-        const nextUrl = new URL(location, currentUrl);
-
-        if (nextUrl.protocol !== "https:") {
-          const error = new Error("Refusing non-HTTPS ePortal handoff.");
-          error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
-          throw error;
-        }
-
-        if (nextUrl.origin !== eportalOrigin) {
-          return nextUrl.toString();
-        }
-
-        referer = currentUrl;
-        currentUrl = nextUrl.toString();
+      if ((await button.count()) !== 1) {
+        const error = new Error(
+          "The selected ePortal module button was not found on the authenticated dashboard.",
+        );
+        error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+        throw error;
       }
 
-      const error = new Error("Too many internal ePortal redirects.");
-      error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
-      throw error;
+      const eportalOrigin = new URL(EPORTAL_HOME).origin;
+      let settled = false;
+      let timeoutId;
+
+      const handoff = new Promise((resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+
+          const error = new Error(
+            "Timed out waiting for ePortal to generate an external SSO handoff.",
+          );
+          error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+          reject(error);
+        }, timeout);
+      });
+
+      let resolveHandoff;
+      let rejectHandoff;
+
+      const handoffResult = new Promise((resolve, reject) => {
+        resolveHandoff = resolve;
+        rejectHandoff = reject;
+      });
+
+      const finish = (fn, value) => {
+        if (settled) return false;
+        settled = true;
+        clearTimeout(timeoutId);
+        fn(value);
+        return true;
+      };
+
+      await context.route("**/*", async (route) => {
+        const request = route.request();
+
+        if (!request.isNavigationRequest()) {
+          await route.continue();
+          return;
+        }
+
+        let target;
+        try {
+          target = new URL(request.url());
+        } catch {
+          await route.continue();
+          return;
+        }
+
+        if (
+          target.protocol !== "https:" ||
+          target.origin === eportalOrigin
+        ) {
+          await route.continue();
+          return;
+        }
+
+        // The external SSO URL is bearer material. Capture it only in memory,
+        // abort the server-side navigation before the target system consumes it,
+        // and never log the URL itself.
+        await route.abort("aborted");
+
+        if (request.method() !== "GET") {
+          const error = new Error(
+            "ePortal generated an external SSO POST handoff, which cannot be transferred with an HTTP redirect.",
+          );
+          error.code = "EPORTAL_HANDOFF_POST_REQUIRED";
+          finish(rejectHandoff, error);
+          return;
+        }
+
+        finish(resolveHandoff, target.toString());
+      });
+
+      const pageErrors = [];
+      const notePage = (page) => {
+        page.on("pageerror", (error) => {
+          if (pageErrors.length < 4) {
+            pageErrors.push(error?.message || String(error));
+          }
+        });
+      };
+
+      for (const page of context.pages()) notePage(page);
+      context.on("page", notePage);
+
+      try {
+        await button.click({ timeout: 10_000 });
+      } catch (error) {
+        if (!settled) {
+          const clickError = new Error(
+            "Could not trigger the selected ePortal module from the authenticated dashboard.",
+          );
+          clickError.code = "EPORTAL_HANDOFF_UNAVAILABLE";
+          finish(rejectHandoff, clickError);
+        }
+      }
+
+      // Race the actual capture against the timeout promise. The timeout promise
+      // intentionally carries no URL/token material.
+      try {
+        return await Promise.race([handoffResult, handoff]);
+      } catch (error) {
+        if (
+          error?.code === "EPORTAL_HANDOFF_UNAVAILABLE" &&
+          pageErrors.length
+        ) {
+          error.diagnostics = {
+            pageErrorCount: pageErrors.length,
+          };
+        }
+        throw error;
+      }
     } finally {
       if (context) await context.close().catch(() => {});
     }
