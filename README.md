@@ -48,17 +48,22 @@ represent, the bridge stops rather than proxying arbitrary external authenticate
 
 ## First server login
 
-第一次在 server 主機執行：
+SSH-only / headless server 不需要圖形桌面。先啟動 Dashboard：
 
 ```bash
-npm run login
+npm start
 ```
 
-這會開啟 headful Chromium。手動登入官方 ePortal 一次；登入成功後 Playwright 會自動保留完整 persistent browser profile：
+然後在手機或桌面瀏覽器打開受 Cloudflare Access 保護的 Dashboard，按
+**登入 Server ePortal**。Native Login Bridge 會啟動 headless Playwright，
+把官方登入頁的可互動控制項映射成瀏覽器原生 HTML 表單。登入成功後
+Playwright 會把完整 persistent browser profile 保存在：
 
 ```text
 .eportal-profile/
 ```
+
+`npm run login` 仍保留給本機有 GUI 的維護情境，但 headless server 不需要它。
 
 這個目錄等同登入憑證，已由 `.gitignore` 排除，絕對不要 commit、備份到公開位置或傳給其他裝置。
 
