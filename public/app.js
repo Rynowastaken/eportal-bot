@@ -934,10 +934,15 @@ function renderScheduleGrid() {
   scheduleGrid.replaceChildren();
 
   const grid = document.createElement("div");
+  const fitsWithoutScroll = dayIndices.length <= 5;
   grid.className =
     "relative grid w-full overflow-hidden rounded-[18px] bg-[rgba(7,7,9,.42)]";
-  grid.style.gridTemplateColumns =
-    `clamp(54px, 14vw, 78px) repeat(${dayIndices.length}, minmax(clamp(60px, 16vw, 96px), 1fr))`;
+  grid.style.gridTemplateColumns = fitsWithoutScroll
+    ? `clamp(56px, 15%, 76px) repeat(${dayIndices.length}, minmax(0, 1fr))`
+    : `64px repeat(${dayIndices.length}, minmax(72px, 1fr))`;
+  grid.style.minWidth = fitsWithoutScroll
+    ? "100%"
+    : `${64 + dayIndices.length * 72}px`;
   grid.style.gridTemplateRows =
     `clamp(58px, 13vw, 70px) repeat(${periodIndices.length}, minmax(clamp(68px, 16vw, 82px), auto))`;
 
