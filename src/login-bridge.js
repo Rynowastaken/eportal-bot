@@ -6,6 +6,7 @@ import {
 } from "./portal-session.js";
 
 let active = null;
+let startInFlight = null;
 
 function hash(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
@@ -84,6 +85,7 @@ async function closeActive() {
   if (!active) return;
   const session = active;
   active = null;
+  session.launchToken = null;
 
   if (session.timer) clearTimeout(session.timer);
   await closeBrowser(session.browser);
@@ -473,7 +475,7 @@ async function initializeLoginBridge(session) {
   }
 }
 
-export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
+async function createLoginBridge({ ttlMinutes = 15 } = {}) {
   bridgeLog("start requested");
 
   if (
@@ -536,6 +538,21 @@ export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
     expiresAt: active.expiresAt,
     launchPath: `/server-login/#token=${encodeURIComponent(token)}`,
   };
+}
+
+export async function startLoginBridge(options = {}) {
+  if (startInFlight) {
+    bridgeLog("joining in-flight start request");
+    return startInFlight;
+  }
+
+  startInFlight = createLoginBridge(options);
+
+  try {
+    return await startInFlight;
+  } finally {
+    startInFlight = null;
+  }
 }
 
 export async function getLoginBridgeState(token) {
