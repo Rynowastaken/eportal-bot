@@ -839,6 +839,72 @@ export async function checkServerPortalStatus(options = {}) {
   }
 }
 
+export async function logoutServerPortalSession() {
+  if (!(await profileExists())) {
+    return {
+      ok: true,
+      status: "not-configured",
+    };
+  }
+
+  return withProfileLock(
+    async () => {
+      let context;
+
+      try {
+        context = await openServerPortalSession({
+          headless: true,
+          launchTimeout: 15_000,
+        });
+
+        await context.clearCookies();
+
+        const page = context.pages()[0] || (await context.newPage());
+
+        await page
+          .goto(EPORTAL_HOME, {
+            waitUntil: "domcontentloaded",
+            timeout: 15_000,
+          })
+          .catch(() => {});
+
+        await page
+          .evaluate(async () => {
+            try {
+              localStorage.clear();
+              sessionStorage.clear();
+            } catch {
+              // Storage can be unavailable on some error/interstitial pages.
+            }
+
+            try {
+              if ("caches" in globalThis) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map((key) => caches.delete(key)));
+              }
+            } catch {
+              // Cache cleanup is best effort.
+            }
+          })
+          .catch(() => {});
+
+        console.log("[portal-session] server ePortal session logged out");
+
+        keepaliveState.lastStatus = "needs-login";
+        keepaliveState.lastError = null;
+
+        return {
+          ok: true,
+          status: "needs-login",
+        };
+      } finally {
+        if (context) await context.close().catch(() => {});
+      }
+    },
+    { timeoutMs: 5_000 },
+  );
+}
+
 export function getPortalKeepaliveState() {
   return structuredClone(keepaliveState);
 }
