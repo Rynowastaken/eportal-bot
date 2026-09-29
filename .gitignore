@@ -19,6 +19,7 @@ data/
 
 # Generated output
 output/
+.deploy/
 *.html
 *.json.tmp
 
