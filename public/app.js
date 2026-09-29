@@ -632,7 +632,7 @@ backgroundUploadDialog.addEventListener("cancel", (event) => {
 
 backgroundUploadDialog.addEventListener("click", (event) => {
   if (event.target !== backgroundUploadDialog) return;
-  closeBackgroundUploadDialog({ reopenSettings: true });
+  void closeBackgroundUploadDialog({ reopenSettings: true });
 });
 
 clearBackgroundAction.addEventListener("click", () => {
