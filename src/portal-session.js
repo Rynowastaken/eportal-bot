@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { EPORTAL_DASHBOARD, EPORTAL_HOME, moduleUrl } from "./eportal.js";
+import { EPORTAL_DASHBOARD, EPORTAL_HOME, moduleById, moduleUrl } from "./eportal.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -162,73 +162,127 @@ export async function openAisWithServerSession({ headless = true } = {}) {
   }
 }
 
-export async function fetchAisOverview({ timeout = 30_000 } = {}) {
+async function snapshotVisiblePage(page) {
+  return page.evaluate(() => {
+    const clean = (value) =>
+      String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const visible = (element) => {
+      if (!(element instanceof Element)) return false;
+      const style = getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+
+    const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")]
+      .filter(visible)
+      .map((element) => clean(element.textContent))
+      .filter(Boolean)
+      .slice(0, 40);
+
+    const tables = [...document.querySelectorAll("table")]
+      .filter(visible)
+      .slice(0, 12)
+      .map((table) => {
+        const caption = clean(table.querySelector("caption")?.textContent);
+        const rows = [...table.querySelectorAll("tr")]
+          .filter(visible)
+          .slice(0, 30)
+          .map((row) =>
+            [...row.querySelectorAll("th,td")]
+              .filter(visible)
+              .slice(0, 16)
+              .map((cell) => clean(cell.textContent)),
+          )
+          .filter((row) => row.some(Boolean));
+
+        return { caption, rows };
+      })
+      .filter((table) => table.rows.length);
+
+    const text = String(document.body?.innerText || "")
+      .split(/\n+/)
+      .map(clean)
+      .filter((value) => value.length >= 2 && value.length <= 240)
+      .slice(0, 100);
+
+    return {
+      title: clean(document.title),
+      headings,
+      tables,
+      text,
+    };
+  });
+}
+
+async function openModuleWithServerSession(moduleId, { headless = true, timeout = 30_000 } = {}) {
+  moduleById(moduleId);
+
+  const context = await openServerPortalSession({ headless });
+  const page = context.pages()[0] || (await context.newPage());
+
+  try {
+    await page.goto(EPORTAL_DASHBOARD, {
+      waitUntil: "domcontentloaded",
+      timeout,
+    });
+
+    const loggedIn =
+      (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
+
+    if (!loggedIn) {
+      const error = new Error("Server ePortal session expired. Run: npm run login");
+      error.code = "EPORTAL_LOGIN_REQUIRED";
+      throw error;
+    }
+
+    const existingPages = new Set(context.pages());
+
+    await page.goto(moduleUrl(moduleId), {
+      waitUntil: "domcontentloaded",
+      timeout,
+    });
+
+    await page.waitForTimeout(1500);
+
+    const newPages = context.pages().filter((candidate) => !existingPages.has(candidate));
+    const targetPage = newPages.at(-1) || page;
+
+    await targetPage.waitForLoadState("domcontentloaded", { timeout }).catch(() => {});
+    await targetPage.waitForTimeout(750);
+
+    return { context, page: targetPage };
+  } catch (error) {
+    await context.close().catch(() => {});
+    throw error;
+  }
+}
+
+export async function fetchModuleOverview(moduleId, { timeout = 30_000 } = {}) {
+  const module = moduleById(moduleId);
+
   return withProfileLock(async () => {
     let session;
 
     try {
-      session = await openAisWithServerSession({ headless: true });
-      const { page } = session;
-
-      await page.waitForLoadState("domcontentloaded", { timeout }).catch(() => {});
-      await page.waitForTimeout(1200);
-
-      const snapshot = await page.evaluate(() => {
-        const clean = (value) =>
-          String(value || "")
-            .replace(/\s+/g, " ")
-            .trim();
-
-        const visible = (element) => {
-          if (!(element instanceof Element)) return false;
-          const style = getComputedStyle(element);
-          if (style.display === "none" || style.visibility === "hidden") return false;
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        };
-
-        const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")]
-          .filter(visible)
-          .map((element) => clean(element.textContent))
-          .filter(Boolean)
-          .slice(0, 40);
-
-        const tables = [...document.querySelectorAll("table")]
-          .filter(visible)
-          .slice(0, 12)
-          .map((table) => {
-            const caption = clean(table.querySelector("caption")?.textContent);
-            const rows = [...table.querySelectorAll("tr")]
-              .filter(visible)
-              .slice(0, 30)
-              .map((row) =>
-                [...row.querySelectorAll("th,td")]
-                  .filter(visible)
-                  .slice(0, 16)
-                  .map((cell) => clean(cell.textContent)),
-              )
-              .filter((row) => row.some(Boolean));
-
-            return { caption, rows };
-          })
-          .filter((table) => table.rows.length);
-
-        const bodyText = clean(document.body?.innerText)
-          .split(/(?<=[。！？!?])\s+|\n+/)
-          .map(clean)
-          .filter((text) => text.length >= 2 && text.length <= 240)
-          .slice(0, 80);
-
-        return {
-          title: clean(document.title),
-          headings,
-          tables,
-          text: bodyText,
-        };
+      session = await openModuleWithServerSession(moduleId, {
+        headless: true,
+        timeout,
       });
+
+      const snapshot = await snapshotVisiblePage(session.page);
 
       return {
         ok: true,
+        module: {
+          id: module.id,
+          name: module.name,
+          shortName: module.shortName,
+          description: module.description,
+        },
         fetchedAt: new Date().toISOString(),
         title: snapshot.title,
         headings: snapshot.headings,
@@ -249,6 +303,10 @@ export async function fetchAisOverview({ timeout = 30_000 } = {}) {
       }
     }
   });
+}
+
+export async function fetchAisOverview(options = {}) {
+  return fetchModuleOverview("ais", options);
 }
 
 export async function requireServerPortalSession() {
