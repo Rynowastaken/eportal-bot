@@ -38,13 +38,55 @@ function allowedPageUrl(raw) {
   }
 }
 
+function pageLocation(page) {
+  try {
+    const url = new URL(page.url());
+    return `${url.hostname}${url.pathname}`;
+  } catch {
+    return "unknown";
+  }
+}
+
+function bridgeLog(message, page) {
+  const location = page ? ` [${pageLocation(page)}]` : "";
+  console.log(`[login-bridge] ${message}${location}`);
+}
+
+async function closeBrowser(browser) {
+  if (!browser) return;
+
+  await Promise.race([
+    browser.close().catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, 5_000)),
+  ]);
+}
+
+async function navigateForBridge(page, url, label) {
+  bridgeLog(`${label}: request started`);
+
+  await page.goto(url, {
+    waitUntil: "commit",
+    timeout: 15_000,
+  });
+
+  bridgeLog(`${label}: response committed`, page);
+
+  await page
+    .waitForLoadState("domcontentloaded", { timeout: 8_000 })
+    .catch(() => {
+      bridgeLog(`${label}: DOMContentLoaded timed out; continuing with current DOM`, page);
+    });
+
+  await page.waitForTimeout(250);
+}
+
 async function closeActive() {
   if (!active) return;
   const session = active;
   active = null;
 
   if (session.timer) clearTimeout(session.timer);
-  await session.browser.close().catch(() => {});
+  await closeBrowser(session.browser);
 }
 
 async function loginComplete(page) {
@@ -269,76 +311,138 @@ async function buildState() {
     return { active: false, complete: false };
   }
 
+  if (active.complete) {
+    return {
+      active: false,
+      complete: true,
+      phase: "complete",
+      expiresAt: active.expiresAt,
+    };
+  }
+
+  if (active.error) {
+    const error = new Error(active.error.message);
+    error.code = active.error.code || "EPORTAL_LOGIN_BRIDGE_START_FAILED";
+    throw error;
+  }
+
+  if (active.phase !== "ready") {
+    return {
+      active: true,
+      complete: false,
+      phase: active.phase,
+      expiresAt: active.expiresAt,
+    };
+  }
+
   if (await loginComplete(active.page)) {
-    await closeActive();
-    return { active: false, complete: true };
+    active.complete = true;
+    active.phase = "complete";
+    await closeBrowser(active.browser);
+    active.browser = null;
+    bridgeLog("login completed; persistent profile saved");
+
+    return {
+      active: false,
+      complete: true,
+      phase: "complete",
+      expiresAt: active.expiresAt,
+    };
   }
 
   return {
     active: true,
     complete: false,
+    phase: "ready",
     expiresAt: active.expiresAt,
     page: await extractState(active.page),
   };
 }
 
-export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
-  await closeActive();
-
-  const browser = await openLoginBridgeSession({ timeoutMs: 5_000 });
-  const { page } = browser;
+async function initializeLoginBridge(session) {
+  const { page } = session;
 
   try {
-    await page.goto(EPORTAL_DASHBOARD, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    session.phase = "checking-session";
+    await navigateForBridge(
+      page,
+      EPORTAL_DASHBOARD,
+      "checking saved ePortal session",
+    );
 
     if (await loginComplete(page)) {
-      await browser.close();
-      return {
-        active: false,
-        complete: true,
-      };
+      session.complete = true;
+      session.phase = "complete";
+      await closeBrowser(session.browser);
+      session.browser = null;
+      bridgeLog("saved ePortal session is already valid", page);
+      return;
     }
 
     if (!allowedPageUrl(page.url())) {
-      await page.goto(EPORTAL_HOME, {
-        waitUntil: "domcontentloaded",
-        timeout: 30_000,
-      });
+      session.phase = "opening-login";
+      await navigateForBridge(page, EPORTAL_HOME, "opening ePortal login");
     }
 
     await ensureAllowed(page);
 
-    const token = crypto.randomBytes(32).toString("base64url");
-    const expiresAt = new Date(
-      Date.now() + Math.max(5, Number(ttlMinutes) || 15) * 60_000,
-    );
-
-    active = {
-      browser,
-      page,
-      tokenHash: hash(token),
-      expiresAt: expiresAt.toISOString(),
-      timer: null,
-    };
-
-    active.timer = setTimeout(() => {
-      void closeActive();
-    }, expiresAt.getTime() - Date.now());
-    active.timer.unref?.();
-
-    return {
-      active: true,
-      complete: false,
-      expiresAt: active.expiresAt,
-      launchPath: `/server-login/#token=${encodeURIComponent(token)}`,
-    };
+    session.phase = "ready";
+    bridgeLog("login form bridge is ready", page);
   } catch (error) {
-    await browser.close().catch(() => {});
-    throw error;
+    session.error = {
+      message: error?.message || String(error),
+      code: error?.code || "EPORTAL_LOGIN_BRIDGE_START_FAILED",
+    };
+    session.phase = "error";
+    bridgeLog(`startup failed: ${session.error.message}`, page);
+
+    await closeBrowser(session.browser);
+    session.browser = null;
   }
+}
+
+export async function startLoginBridge({ ttlMinutes = 15 } = {}) {
+  bridgeLog("start requested");
+  await closeActive();
+
+  bridgeLog("acquiring persistent profile and launching headless Chromium");
+  const browser = await openLoginBridgeSession({ timeoutMs: 5_000 });
+  const { page } = browser;
+  bridgeLog("headless Chromium launched", page);
+
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAt = new Date(
+    Date.now() + Math.max(5, Number(ttlMinutes) || 15) * 60_000,
+  );
+
+  const session = {
+    browser,
+    page,
+    tokenHash: hash(token),
+    expiresAt: expiresAt.toISOString(),
+    timer: null,
+    phase: "starting",
+    complete: false,
+    error: null,
+  };
+
+  active = session;
+
+  active.timer = setTimeout(() => {
+    bridgeLog("session expired");
+    void closeActive();
+  }, expiresAt.getTime() - Date.now());
+  active.timer.unref?.();
+
+  void initializeLoginBridge(session);
+
+  return {
+    active: true,
+    complete: false,
+    phase: "starting",
+    expiresAt: active.expiresAt,
+    launchPath: `/server-login/#token=${encodeURIComponent(token)}`,
+  };
 }
 
 export async function getLoginBridgeState(token) {
@@ -356,6 +460,10 @@ export async function applyLoginBridgeAction(token, action = {}) {
     const error = new Error("Invalid or expired login bridge token.");
     error.code = "EPORTAL_LOGIN_BRIDGE_UNAUTHORIZED";
     throw error;
+  }
+
+  if (active.phase !== "ready") {
+    return buildState();
   }
 
   const fields = action?.fields && typeof action.fields === "object"
@@ -397,10 +505,11 @@ export async function applyLoginBridgeAction(token, action = {}) {
     );
 
     if ((await locator.count()) === 1) {
-      await Promise.allSettled([
-        active.page.waitForLoadState("domcontentloaded", { timeout: 8_000 }),
-        locator.click({ timeout: 8_000 }),
-      ]);
+      await locator.click({ timeout: 8_000 });
+
+      await active.page
+        .waitForLoadState("domcontentloaded", { timeout: 5_000 })
+        .catch(() => {});
     }
   } else if (action.pressEnter === true) {
     await active.page.keyboard.press("Enter");
@@ -454,7 +563,9 @@ export async function stopLoginBridge(token) {
 
 export function getLoginBridgeSummary() {
   return {
-    active: Boolean(active),
+    active: Boolean(active && !active.complete),
+    complete: Boolean(active?.complete),
+    phase: active?.phase || "idle",
     expiresAt: active?.expiresAt || null,
   };
 }
