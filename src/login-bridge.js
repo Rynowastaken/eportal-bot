@@ -116,9 +116,15 @@ async function extractState(page) {
 
     const interactive = [
       ...document.querySelectorAll(
-        'input:not([type="hidden"]), textarea, select, button, input[type="submit"], input[type="button"], a[href]',
+        'input:not([type="hidden"]), textarea, select, button, a[role="button"]',
       ),
-    ].filter(visible);
+    ]
+      .filter(visible)
+      .filter((element) => {
+        if (element.tagName.toLowerCase() !== "input") return true;
+        const type = String(element.getAttribute("type") || "text").toLowerCase();
+        return !["file", "image", "reset", "range", "color"].includes(type);
+      });
 
     document
       .querySelectorAll("[data-nutc-login-bridge-key]")
@@ -189,9 +195,29 @@ async function extractState(page) {
       .filter(visible)
       .filter((image) => {
         const rect = image.getBoundingClientRect();
-        return rect.width >= 40 && rect.height >= 20;
+        const hint = [
+          image.alt,
+          image.title,
+          image.getAttribute("aria-label"),
+          image.currentSrc,
+          image.src,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        const challengeHint =
+          /captcha|verification|verify|security|驗證|驗證碼/.test(hint);
+        const compactFormImage =
+          Boolean(image.closest("form")) &&
+          rect.width >= 60 &&
+          rect.height >= 24 &&
+          rect.width <= 360 &&
+          rect.height <= 140;
+
+        return challengeHint || compactFormImage;
       })
-      .slice(0, 4)
+      .slice(0, 2)
       .map((image, index) => {
         const key = `image-${index}`;
         image.setAttribute("data-nutc-login-bridge-image", key);
