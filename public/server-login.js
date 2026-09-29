@@ -262,8 +262,8 @@ function makeAction(control, index) {
 
   button.className =
     index === 0
-      ? "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-55"
-      : "min-h-[46px] rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-55";
+      ? "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50"
+      : "min-h-[46px] rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50";
 
   button.addEventListener("click", () => submitAction(control.key));
   return button;
@@ -351,6 +351,12 @@ function render(state) {
   messageList.replaceChildren();
 
   for (const message of state.page.messages || []) {
+    const important =
+      message.length <= 180 ||
+      /錯誤|失敗|驗證|密碼|error|invalid|warning/i.test(message);
+
+    if (!important) continue;
+
     const item = document.createElement("div");
     item.className =
       "rounded-xl border border-white/[.10] bg-white/[.06] px-3 py-2.5 text-sm font-medium leading-6 text-[var(--muted)]";
