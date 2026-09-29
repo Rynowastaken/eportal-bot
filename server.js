@@ -435,7 +435,8 @@ const server = http.createServer(async (req, res) => {
         if (
           error?.code === "EPORTAL_HANDOFF_POST_REQUIRED" ||
           error?.code === "EPORTAL_HANDOFF_POST_UNSUPPORTED" ||
-          error?.code === "ACTIVITY_RELAY_UNAVAILABLE"
+          error?.code === "ACTIVITY_RELAY_UNAVAILABLE" ||
+          error?.code?.startsWith("ACTIVITY_PROXY_")
         ) {
           sendError(res, 502, error.message, error.code);
           return;
