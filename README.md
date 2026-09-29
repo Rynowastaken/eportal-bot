@@ -1,3 +1,8 @@
+> [!WARNING]
+> VIBE CODE REPO AHEAD!
+> This project is entirely vibe coded with GPT-5.5 and GPT-5.6 Sol. Support and bug fixes are not guaranteed. Use at your only risk.
+
+
 # NUTC Portal
 
 自架的國立臺中科技大學個人 Dashboard。
