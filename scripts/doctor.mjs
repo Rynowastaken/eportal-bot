@@ -12,6 +12,7 @@ const required = [
   "src/eportal.js",
   "src/portal-session.js",
   "src/login-bridge.js",
+  "src/dashboard-preferences.js",
   "scripts/portal-login.mjs",
   "scripts/portal-status.mjs",
   "scripts/portal-run.mjs",
