@@ -77,7 +77,6 @@ a {
 .remote-brand,
 .remote-actions,
 .status-copy,
-.bandwidth-control,
 #tokenForm {
   display: flex;
   align-items: center;
@@ -122,23 +121,17 @@ h1 {
   gap: 0.55rem;
 }
 
-.bandwidth-control {
-  gap: 0.5rem;
+.low-data-badge {
+  display: inline-flex;
+  align-items: center;
   min-height: 44px;
-  padding-left: 0.7rem;
+  padding: 0.55rem 0.75rem;
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 11px;
   background: var(--panel-soft);
   font-size: 0.77rem;
-}
-
-.bandwidth-control select {
-  padding: 0 0.7rem;
-  color: var(--text);
-  background: transparent;
-  border: 0;
-  outline: none;
+  white-space: nowrap;
 }
 
 .remote-status-card {
@@ -325,15 +318,6 @@ footer {
     width: 100%;
   }
 
-  .bandwidth-control {
-    flex: 1;
-  }
-
-  .bandwidth-control select {
-    flex: 1;
-    min-width: 0;
-  }
-
   .privacy-note {
     max-width: none;
     text-align: left;
@@ -368,8 +352,11 @@ footer {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .bandwidth-control > span {
-    display: none;
+  .low-data-badge {
+    justify-content: center;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
   }
 
   #tokenForm {
