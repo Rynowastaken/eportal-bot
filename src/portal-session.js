@@ -803,6 +803,11 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         }, timeout);
       });
 
+      // Event callbacks may settle either promise before createModuleHandoff()
+      // reaches the final Promise.race(). Attach handlers immediately so newer
+      // Node versions do not treat that short window as an unhandled rejection.
+      void handoff.catch(() => {});
+
       let resolveHandoff;
       let rejectHandoff;
 
@@ -810,6 +815,7 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
         resolveHandoff = resolve;
         rejectHandoff = reject;
       });
+      void handoffResult.catch(() => {});
 
       const finish = (fn, value) => {
         if (settled) return false;
@@ -1185,6 +1191,18 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
             );
 
             if (!handoffUrl) {
+              // Chromium can pause synthetic/non-network documents such as
+              // about:blank when a new page is created. Those are not SSO hops.
+              // Let them proceed instead of treating them as hostile handoffs.
+              if (target.protocol !== "http:" && target.protocol !== "https:") {
+                await cdp
+                  .send("Fetch.continueRequest", {
+                    requestId: event.requestId,
+                  })
+                  .catch(() => {});
+                return;
+              }
+
               await cdp
                 .send("Fetch.failRequest", {
                   requestId: event.requestId,
@@ -1194,7 +1212,7 @@ export async function createModuleHandoff(moduleId, { timeout = 30_000 } = {}) {
 
               if (!settled) {
                 const error = new Error(
-                  "Refusing a non-HTTPS external ePortal handoff outside NUTC domains.",
+                  `Refusing external ${target.protocol} handoff outside the allowed NUTC HTTPS flow (${target.hostname || "unknown-host"}).`,
                 );
                 error.code = "EPORTAL_HANDOFF_UNAVAILABLE";
                 finish(rejectHandoff, error);
