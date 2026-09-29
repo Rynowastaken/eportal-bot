@@ -121,6 +121,22 @@ theme automatically carries into `/server-login/` in that browser.
 
 Removing the background restores the default rose/gold palette.
 
+## Debug restart
+
+The appearance settings include a Debug section with a **Restart** action. By default,
+the server performs a self-restart, which is convenient when running it directly with
+`npm start`.
+
+If the process is managed by systemd, Docker, PM2, or another supervisor, set:
+
+```bash
+EPORTAL_RESTART_MODE=exit
+```
+
+In that mode the Debug action exits cleanly and lets the supervisor start the process
+again. The restart endpoint closes an active login bridge and clears Activity relay
+sessions before restarting.
+
 ## Session keepalive
 
 While the Dashboard server is running, it periodically opens the authenticated ePortal
