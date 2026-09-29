@@ -156,6 +156,7 @@ function safeUrlLabel(raw) {
 
 const LEGACY_HTTP_HANDOFF_HOSTS = Object.freeze({
   webmail: ["163.17.131.143"],
+  activity: ["163.17.131.167"],
 });
 
 function isTrustedLegacyHttpTarget(module, rawUrl) {
