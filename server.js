@@ -495,7 +495,10 @@ const server = http.createServer(async (req, res) => {
         `[access] rejected ${req.method} ${url.pathname}: ${accessResult.code}`,
       );
 
-      if (cloudflareAccess.wantsHtml(req)) {
+      if (
+        !url.pathname.startsWith("/api/") &&
+        cloudflareAccess.wantsHtml(req)
+      ) {
         redirect(res, "/login");
       } else {
         sendError(
