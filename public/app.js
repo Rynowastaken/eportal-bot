@@ -1994,7 +1994,7 @@ debugRestartServer.addEventListener("click", async () => {
   }
 });
 
-debugUpdateServer.addEventListener("click", async () => {
+debugUpdateServer?.addEventListener("click", async () => {
   if (debugUpdateServer.disabled) return;
 
   debugUpdateServer.disabled = true;
