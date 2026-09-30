@@ -790,6 +790,7 @@ function scheduleCourseTheme(course) {
     glow: rgba(accent, 0.1),
   };
 }
+
 function weeklyScheduleBlocks(periods) {
   const blocks = [];
 
@@ -837,27 +838,6 @@ function weeklyScheduleBlocks(periods) {
   }
 
   return blocks;
-}
-
-function hasScheduleCourse(course) {
-  return Boolean(course?.name || course?.teacher || course?.room);
-}
-
-function visibleScheduleAxes(periods) {
-  const dayIndices = Array.from({ length: 7 }, (_, index) => index).filter(
-    (dayIndex) =>
-      periods.some((period) => hasScheduleCourse(period.days?.[dayIndex])),
-  );
-
-  const periodIndices = periods
-    .map((_, index) => index)
-    .filter((periodIndex) =>
-      dayIndices.some((dayIndex) =>
-        hasScheduleCourse(periods[periodIndex]?.days?.[dayIndex]),
-      ),
-    );
-
-  return { dayIndices, periodIndices };
 }
 
 function setScheduleMessage(message, { kind = "info" } = {}) {
@@ -925,7 +905,7 @@ function renderScheduleGrid() {
 
   const board = document.createElement("div");
   board.className =
-    "grid gap-3 p-3 sm:p-4 xl:grid-cols-2";
+    "grid gap-3 p-3 sm:p-4 md:grid-cols-2";
 
   dayIndices.forEach((dayIndex) => {
     const dayBlocks = blocks
@@ -1089,6 +1069,7 @@ function renderScheduleGrid() {
 
   scheduleGrid.append(board);
 }
+
 function updateScheduleMeta(data) {
   if (!scheduleMeta) return;
 
