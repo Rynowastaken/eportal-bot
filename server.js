@@ -460,7 +460,8 @@ function startModuleLaunchJob(moduleId) {
 
 function restartServerProcess() {
   const restartMode = String(
-    process.env.EPORTAL_RESTART_MODE || "self",
+    process.env.EPORTAL_RESTART_MODE ||
+      (process.env.INVOCATION_ID ? "exit" : "self"),
   )
     .trim()
     .toLowerCase();
