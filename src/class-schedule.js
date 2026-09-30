@@ -5,20 +5,19 @@ const AIS_SCHEDULE_URL =
 const CACHE_TTL_MS = 5 * 60_000;
 
 export const CLASS_SCHEDULE_TIME_SLOTS = Object.freeze([
-  { slot: "1", time: "08:20~09:10" },
-  { slot: "2", time: "09:20~10:10" },
-  { slot: "3", time: "10:20~11:10" },
-  { slot: "4", time: "11:20~12:10" },
-  { slot: "5", time: "13:10~14:00" },
-  { slot: "6", time: "14:10~15:00" },
-  { slot: "7", time: "15:10~16:00" },
-  { slot: "8", time: "16:10~17:00" },
+  { slot: "1", time: "08:10~09:00" },
+  { slot: "2", time: "09:10~10:00" },
+  { slot: "3", time: "10:10~11:00" },
+  { slot: "4", time: "11:10~12:00" },
+  { slot: "5", time: "13:25~14:15" },
+  { slot: "6", time: "14:20~15:10" },
+  { slot: "7", time: "15:20~16:10" },
+  { slot: "8", time: "16:15~17:05" },
   { slot: "9", time: "17:10~18:00" },
-  { slot: "10", time: "18:20~19:10" },
-  { slot: "11", time: "19:15~20:05" },
+  { slot: "10", time: "18:10~19:00" },
+  { slot: "11", time: "19:10~20:00" },
   { slot: "12", time: "20:10~21:00" },
-  { slot: "13", time: "21:05~21:55" },
-  { slot: "14", time: "22:00~22:50" },
+  { slot: "13", time: "21:10~22:00" },
 ]);
 
 const DAY_LABELS = Object.freeze([
@@ -99,7 +98,7 @@ async function fetchFreshSchedule() {
           day > 7 ||
           !Number.isInteger(period) ||
           period < 1 ||
-          period > 14
+          period > CLASS_SCHEDULE_TIME_SLOTS.length
         ) {
           continue;
         }
