@@ -2000,7 +2000,7 @@ debugUpdateServer.addEventListener("click", async () => {
   debugUpdateServer.disabled = true;
   debugRestartServer.disabled = true;
   debugUpdateIcon.classList.add("animate-spin");
-  debugUpdateStatus.textContent = "正在檢查最新 GitHub Release…";
+  debugUpdateStatus.textContent = "正在執行 git pull…";
   debugUpdateStatus.classList.remove("text-[#f4a0a5]");
   debugUpdateStatus.classList.add("text-[var(--muted)]");
 
@@ -2021,9 +2021,8 @@ debugUpdateServer.addEventListener("click", async () => {
     }
 
     if (!data.updated) {
-      debugUpdateStatus.textContent = data.aheadOfRelease
-        ? `目前版本比最新 Release（${data.release?.name || data.release?.tag || "latest"}）更新。`
-        : `已是最新版本：${data.release?.name || data.release?.tag || "latest"}`;
+      debugUpdateStatus.textContent =
+        data.output || "git pull 完成，沒有新的更新。";
       debugUpdateServer.disabled = false;
       debugRestartServer.disabled = false;
       debugUpdateIcon.classList.remove("animate-spin");
@@ -2031,7 +2030,7 @@ debugUpdateServer.addEventListener("click", async () => {
     }
 
     debugUpdateStatus.textContent =
-      `已更新到 ${data.release?.name || data.release?.tag || "latest"}，正在重新啟動…`;
+      "git pull 完成，正在重新啟動 Server…";
 
     const restarted = await waitForServerRestart(before.instanceId);
 
