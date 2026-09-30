@@ -788,9 +788,9 @@ function scheduleCourseTheme(course) {
   return {
     accent,
     background:
-      `linear-gradient(120deg, ${rgba(accent, 0.1)} 0%, rgba(255,255,255,.025) 72%)`,
-    border: rgba(accent, 0.2),
-    glow: rgba(accent, 0.1),
+      `linear-gradient(120deg, ${rgba(accent, 0.055)} 0%, rgba(255,255,255,.012) 72%)`,
+    border: rgba(accent, 0.14),
+    glow: rgba(accent, 0.065),
   };
 }
 
@@ -1040,7 +1040,7 @@ function renderScheduleGrid() {
 
     const card = document.createElement("article");
     card.className =
-      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-[12px] border px-2 py-2 text-left text-[var(--foreground)] shadow-sm backdrop-blur-[10px] transition duration-150 hover:-translate-y-px hover:bg-white/[.04] sm:m-[3px] sm:rounded-[14px] sm:px-2.5 sm:py-2.5";
+      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-[12px] border px-2 py-2 text-left text-[var(--foreground)] shadow-sm backdrop-blur-[14px] transition duration-150 hover:-translate-y-px hover:bg-white/[.025] sm:m-[3px] sm:rounded-[14px] sm:px-2.5 sm:py-2.5";
     card.style.gridColumn = String(compactColumn);
     card.style.gridRow = `${compactStartRow} / ${compactEndRow + 1}`;
     card.style.background = theme.background;
@@ -1048,8 +1048,8 @@ function renderScheduleGrid() {
       ? rgba(primary, 0.42)
       : theme.border;
     card.style.boxShadow = isNow
-      ? `inset 3px 0 0 ${rgba(primary, 0.95)}, 0 8px 24px ${theme.glow}`
-      : `inset 3px 0 0 ${rgba(theme.accent, 0.68)}, 0 5px 18px ${theme.glow}`;
+      ? `0 0 0 1px ${rgba(primary, 0.42)}, 0 8px 24px ${theme.glow}`
+      : `0 5px 18px ${theme.glow}`;
     card.title = [
       block.name,
       block.room,
