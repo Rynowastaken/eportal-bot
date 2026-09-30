@@ -225,11 +225,9 @@ async function loadStaticAsset(resolved, relative) {
     body,
     contentType: contentType(resolved),
     cacheControl:
-      extension === ".html"
+      extension === ".html" || !relative.startsWith("vendor/")
         ? "no-cache"
-        : relative.startsWith("vendor/")
-          ? "public, max-age=31536000, immutable"
-          : "public, max-age=300",
+        : "public, max-age=31536000, immutable",
     etag:
       '"' +
       crypto.createHash("sha256").update(body).digest("base64url").slice(0, 22) +
