@@ -566,6 +566,32 @@ async function updateServerToLatestRelease() {
     };
   }
 
+  const behindCount = Number(
+    (await runGit(["rev-list", "--count", `${current}..${target}`])).stdout,
+  );
+  const aheadCount = Number(
+    (await runGit(["rev-list", "--count", `${target}..${current}`])).stdout,
+  );
+
+  if (aheadCount > 0 && behindCount === 0) {
+    return {
+      updated: false,
+      currentCommit: current,
+      targetCommit: target,
+      aheadOfRelease: true,
+      release,
+    };
+  }
+
+  if (aheadCount > 0 && behindCount > 0) {
+    const error = new Error(
+      `Current checkout has diverged from release ${release.tag}; refusing to overwrite it.`,
+    );
+    error.code = "SERVER_UPDATE_DIVERGED";
+    error.statusCode = 409;
+    throw error;
+  }
+
   let branch = "";
   try {
     branch = (
