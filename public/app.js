@@ -1040,14 +1040,16 @@ function renderScheduleGrid() {
 
     const card = document.createElement("article");
     card.className =
-      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-[8px] border px-1.5 py-2 text-center text-[var(--foreground)] shadow-[0_4px_14px_rgba(0,0,0,.22)] sm:m-[3px] sm:rounded-[9px] sm:px-2 sm:py-2.5";
+      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-[12px] border px-2 py-2 text-left text-[var(--foreground)] shadow-sm backdrop-blur-[10px] transition duration-150 hover:-translate-y-px hover:bg-white/[.04] sm:m-[3px] sm:rounded-[14px] sm:px-2.5 sm:py-2.5";
     card.style.gridColumn = String(compactColumn);
     card.style.gridRow = `${compactStartRow} / ${compactEndRow + 1}`;
     card.style.background = theme.background;
-    card.style.borderColor = theme.border;
+    card.style.borderColor = isNow
+      ? rgba(primary, 0.42)
+      : theme.border;
     card.style.boxShadow = isNow
-      ? `0 0 0 2px ${rgba(primary, 0.72)}, 0 8px 24px ${theme.glow}`
-      : `0 6px 20px ${theme.glow}`;
+      ? `inset 3px 0 0 ${rgba(primary, 0.95)}, 0 8px 24px ${theme.glow}`
+      : `inset 3px 0 0 ${rgba(theme.accent, 0.68)}, 0 5px 18px ${theme.glow}`;
     card.title = [
       block.name,
       block.room,
@@ -1057,26 +1059,32 @@ function renderScheduleGrid() {
       .filter(Boolean)
       .join(" · ");
 
+    const titleRow = document.createElement("div");
+    titleRow.className =
+      "flex min-w-0 items-start justify-between gap-1.5";
+
     const title = document.createElement("strong");
     title.className =
-      "line-clamp-3 break-words text-[11px] font-semibold leading-[1.3] tracking-[-0.015em] sm:text-[14px] sm:leading-5";
+      "min-w-0 line-clamp-3 break-words text-[11px] font-semibold leading-[1.3] tracking-[-0.015em] sm:text-[14px] sm:leading-5";
     title.textContent = block.name || "未命名課程";
 
-    const meta = document.createElement("span");
-    meta.className =
-      "mt-1 line-clamp-2 break-words text-[9px] font-semibold leading-[1.25] text-[var(--foreground)] opacity-80 sm:mt-1.5 sm:text-[11px] sm:leading-4";
-    meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
-
-    card.append(title);
-    if (meta.textContent) card.append(meta);
+    titleRow.append(title);
 
     if (isNow) {
       const badge = document.createElement("span");
       badge.className =
-        "mt-1.5 rounded-full border border-white/[.18] bg-black/20 px-1.5 py-0.5 text-[8px] font-semibold tracking-[.02em] sm:mt-2 sm:px-2 sm:text-[9px]";
+        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1.5 py-0.5 text-[8px] font-semibold text-[var(--primary)] sm:px-2 sm:text-[9px]";
       badge.textContent = "現在";
-      card.append(badge);
+      titleRow.append(badge);
     }
+
+    const meta = document.createElement("span");
+    meta.className =
+      "mt-1 line-clamp-2 break-words text-[9px] font-medium leading-[1.3] text-[var(--muted)] sm:mt-1.5 sm:text-[11px] sm:leading-4";
+    meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
+
+    card.append(titleRow);
+    if (meta.textContent) card.append(meta);
 
     grid.append(card);
   });
