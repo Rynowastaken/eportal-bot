@@ -2021,8 +2021,9 @@ debugUpdateServer.addEventListener("click", async () => {
     }
 
     if (!data.updated) {
-      debugUpdateStatus.textContent =
-        `已是最新版本：${data.release?.name || data.release?.tag || "latest"}`;
+      debugUpdateStatus.textContent = data.aheadOfRelease
+        ? `目前版本比最新 Release（${data.release?.name || data.release?.tag || "latest"}）更新。`
+        : `已是最新版本：${data.release?.name || data.release?.tag || "latest"}`;
       debugUpdateServer.disabled = false;
       debugRestartServer.disabled = false;
       debugUpdateIcon.classList.remove("animate-spin");
