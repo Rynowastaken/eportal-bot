@@ -458,6 +458,148 @@ function startModuleLaunchJob(moduleId) {
   return job;
 }
 
+const UPDATE_REPOSITORY = "Rynowastaken/eportal-bot";
+
+function runGit(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd: __dirname,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout = [];
+    const stderr = [];
+
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.once("error", (error) => reject(error));
+    child.once("close", (code) => {
+      const result = {
+        code,
+        stdout: Buffer.concat(stdout).toString("utf8").trim(),
+        stderr: Buffer.concat(stderr).toString("utf8").trim(),
+      };
+
+      if (code === 0) {
+        resolve(result);
+        return;
+      }
+
+      const error = new Error(
+        result.stderr || result.stdout || `git ${args[0]} failed with exit code ${code}.`,
+      );
+      error.code = "SERVER_UPDATE_GIT_FAILED";
+      error.statusCode = 502;
+      reject(error);
+    });
+  });
+}
+
+async function latestReleaseTag() {
+  const response = await fetch(
+    `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "eportal-bot-server-updater",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+
+  if (!response.ok) {
+    const error = new Error(
+      response.status === 404
+        ? "No published GitHub release is available."
+        : `GitHub release lookup failed (${response.status}).`,
+    );
+    error.code = "SERVER_UPDATE_RELEASE_LOOKUP_FAILED";
+    error.statusCode = response.status === 404 ? 404 : 502;
+    throw error;
+  }
+
+  const release = await response.json();
+  const tag = String(release?.tag_name || "").trim();
+
+  if (!tag || tag.startsWith("-") || !/^[A-Za-z0-9._/+~-]+$/.test(tag)) {
+    const error = new Error("Latest GitHub release returned an invalid tag.");
+    error.code = "SERVER_UPDATE_INVALID_TAG";
+    error.statusCode = 502;
+    throw error;
+  }
+
+  return {
+    tag,
+    name: String(release?.name || tag),
+    publishedAt: release?.published_at || null,
+  };
+}
+
+async function updateServerToLatestRelease() {
+  const status = await runGit(["status", "--porcelain=v1"]);
+
+  if (status.stdout) {
+    const error = new Error(
+      "Server repository has local changes. Commit or discard them before updating.",
+    );
+    error.code = "SERVER_UPDATE_DIRTY_WORKTREE";
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const release = await latestReleaseTag();
+  const current = (await runGit(["rev-parse", "HEAD"])).stdout;
+
+  await runGit(["fetch", "--force", "origin", "tag", release.tag]);
+
+  const target = (
+    await runGit(["rev-parse", `refs/tags/${release.tag}^{commit}`])
+  ).stdout;
+
+  if (current === target) {
+    return {
+      updated: false,
+      currentCommit: current,
+      targetCommit: target,
+      release,
+    };
+  }
+
+  let branch = "";
+  try {
+    branch = (
+      await runGit(["symbolic-ref", "--quiet", "--short", "HEAD"])
+    ).stdout;
+  } catch {
+    // Detached deployments can still move directly to the release tag.
+  }
+
+  if (branch) {
+    try {
+      await runGit(["merge", "--ff-only", `refs/tags/${release.tag}`]);
+    } catch (error) {
+      error.message =
+        `Cannot fast-forward ${branch} to release ${release.tag}. ` +
+        "Update the checkout manually or resolve its branch history first.";
+      error.code = "SERVER_UPDATE_NOT_FAST_FORWARD";
+      error.statusCode = 409;
+      throw error;
+    }
+  } else {
+    await runGit(["checkout", "--detach", `refs/tags/${release.tag}`]);
+  }
+
+  const after = (await runGit(["rev-parse", "HEAD"])).stdout;
+
+  return {
+    updated: true,
+    currentCommit: current,
+    targetCommit: after,
+    branch: branch || null,
+    release,
+  };
+}
 function restartServerProcess() {
   const restartMode = String(
     process.env.EPORTAL_RESTART_MODE ||
@@ -614,6 +756,55 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/debug/update") {
+      if (restartScheduled) {
+        sendError(
+          res,
+          409,
+          "A server restart is already in progress.",
+          "SERVER_RESTART_IN_PROGRESS",
+        );
+        return;
+      }
+
+      try {
+        const result = await updateServerToLatestRelease();
+
+        if (!result.updated) {
+          sendJson(res, 200, {
+            ok: true,
+            restarting: false,
+            ...result,
+          });
+          return;
+        }
+
+        await shutdownLoginBridge();
+        clearActivityRelaySessions();
+        clearClassScheduleCache();
+        clearAbsenceListCache();
+
+        restartScheduled = true;
+        sendJson(res, 202, {
+          ok: true,
+          restarting: true,
+          instanceId: serverInstanceId,
+          ...result,
+        });
+
+        res.once("finish", () => {
+          setTimeout(restartServerProcess, 120).unref();
+        });
+      } catch (error) {
+        sendError(
+          res,
+          error?.statusCode || 500,
+          error?.message || "Unable to update the server.",
+          error?.code || "SERVER_UPDATE_FAILED",
+        );
+      }
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/debug/restart") {
       if (restartScheduled) {
         sendJson(res, 202, {
