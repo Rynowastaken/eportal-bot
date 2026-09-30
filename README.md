@@ -3,7 +3,7 @@
 > [!WARNING]
 > **VIBE CODE REPO AHEAD!**
 > 
-> This project is entirely vibe coded with GPT-5.5 and GPT-5.6 Sol. Support and bug fixes are not guaranteed. Use at your own risk.
+> This project is entirely vibe coded with GPT-5.6 Sol. Support and bug fixes are not guaranteed. Use at your own risk.
 
 
 # NUTC Portal
