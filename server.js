@@ -460,7 +460,8 @@ function startModuleLaunchJob(moduleId) {
 
 function restartServerProcess() {
   const restartMode = String(
-    process.env.EPORTAL_RESTART_MODE || "self",
+    process.env.EPORTAL_RESTART_MODE ||
+      (process.env.INVOCATION_ID ? "exit" : "self"),
   )
     .trim()
     .toLowerCase();
@@ -472,7 +473,10 @@ function restartServerProcess() {
     finished = true;
 
     if (restartMode === "exit") {
-      process.exit(0);
+      // systemd's generated unit uses Restart=on-failure. Exit with a
+      // dedicated non-zero status so a dashboard restart request is treated
+      // as restart-worthy, while a normal systemctl stop still stays stopped.
+      process.exit(75);
       return;
     }
 

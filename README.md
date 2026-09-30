@@ -162,7 +162,7 @@ Cloudflare 那邊的 DNS、Access Application、Origin CA 憑證還是要自己�
 | `HOST` | `0.0.0.0` | 繫結 IP |
 | `EPORTAL_KEEPALIVE_MINUTES` | `10` | 自動檢查 session 的間隔（分鐘），設 0 關閉 |
 | `EPORTAL_LOGIN_BRIDGE_TTL_MINUTES` | `15` | Login Bridge 的有效時間 |
-| `EPORTAL_RESTART_MODE` | `self` | 用 systemd 管理時建議設 `exit` |
+| `EPORTAL_RESTART_MODE` | `self` | 用 systemd 管理時設 `exit`；重新啟動請求會以非零狀態退出，讓 `Restart=on-failure` 接手啟動新程序 |
 | `CLOUDFLARE_ACCESS_ENFORCE` | — | 設 `1` 啟用 origin JWT 驗證 |
 | `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | — | Cloudflare Access team domain |
 | `CLOUDFLARE_ACCESS_AUD` | — | Cloudflare Access Application AUD |
