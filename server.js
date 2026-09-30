@@ -472,7 +472,10 @@ function restartServerProcess() {
     finished = true;
 
     if (restartMode === "exit") {
-      process.exit(0);
+      // systemd's generated unit uses Restart=on-failure. Exit with a
+      // dedicated non-zero status so a dashboard restart request is treated
+      // as restart-worthy, while a normal systemctl stop still stays stopped.
+      process.exit(75);
       return;
     }
 
