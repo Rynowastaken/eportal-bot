@@ -788,9 +788,9 @@ function scheduleCourseTheme(course) {
   return {
     accent,
     background:
-      `linear-gradient(120deg, ${rgba(accent, 0.055)} 0%, rgba(255,255,255,.012) 72%)`,
-    border: rgba(accent, 0.14),
-    glow: rgba(accent, 0.065),
+      `linear-gradient(120deg, ${rgba(accent, 0.1)} 0%, rgba(255,255,255,.025) 72%)`,
+    border: rgba(accent, 0.2),
+    glow: rgba(accent, 0.1),
   };
 }
 
@@ -937,7 +937,7 @@ function renderScheduleGrid() {
   const grid = document.createElement("div");
   const fitsWithoutScroll = dayIndices.length <= 5;
   grid.className =
-    "relative grid w-full overflow-hidden rounded-[18px] bg-[rgba(7,7,9,.32)]";
+    "relative grid w-full overflow-hidden rounded-[18px] border border-white/[.08] bg-white/[.018] backdrop-blur-[14px]";
   grid.style.gridTemplateColumns = fitsWithoutScroll
     ? `clamp(56px, 15%, 76px) repeat(${dayIndices.length}, minmax(0, 1fr))`
     : `64px repeat(${dayIndices.length}, minmax(72px, 1fr))`;
@@ -949,7 +949,7 @@ function renderScheduleGrid() {
 
   const corner = document.createElement("div");
   corner.className =
-    "sticky left-0 z-30 border-b border-r border-white/[.08] bg-[rgba(16,13,19,.96)]";
+    "sticky left-0 z-30 border-b border-r border-white/[.08] bg-[rgba(16,13,19,.72)] backdrop-blur-[18px]";
   corner.style.gridColumn = "1";
   corner.style.gridRow = "1";
   grid.append(corner);
@@ -964,7 +964,7 @@ function renderScheduleGrid() {
     header.style.gridRow = "1";
     header.style.background = isToday
       ? `linear-gradient(180deg, ${rgba(primary, 0.12)}, rgba(255,255,255,.045))`
-      : "rgba(255,255,255,.045)";
+      : "rgba(255,255,255,.025)";
     if (isToday) {
       header.style.boxShadow = `inset 0 -3px 0 ${rgba(primary, 0.8)}`;
     }
@@ -990,7 +990,7 @@ function renderScheduleGrid() {
 
     const periodLabel = document.createElement("div");
     periodLabel.className =
-      "sticky left-0 z-30 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.08] bg-[rgba(16,13,19,.96)] px-0.5 text-center sm:px-1";
+      "sticky left-0 z-30 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.08] bg-[rgba(16,13,19,.72)] px-0.5 text-center backdrop-blur-[18px] sm:px-1";
     periodLabel.style.gridColumn = "1";
     periodLabel.style.gridRow = String(periodRow.get(periodIndex));
 
@@ -1040,7 +1040,7 @@ function renderScheduleGrid() {
 
     const card = document.createElement("article");
     card.className =
-      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-[12px] border px-2 py-2 text-left text-[var(--foreground)] shadow-sm backdrop-blur-[14px] transition duration-150 hover:-translate-y-px hover:bg-white/[.025] sm:m-[3px] sm:rounded-[14px] sm:px-2.5 sm:py-2.5";
+      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-[14px] border p-3 text-left text-[var(--foreground)] shadow-sm backdrop-blur-[12px] transition duration-150 hover:-translate-y-px hover:bg-white/[.04] sm:m-[3px]";
     card.style.gridColumn = String(compactColumn);
     card.style.gridRow = `${compactStartRow} / ${compactEndRow + 1}`;
     card.style.background = theme.background;
@@ -1049,7 +1049,7 @@ function renderScheduleGrid() {
       : theme.border;
     card.style.boxShadow = isNow
       ? `0 0 0 1px ${rgba(primary, 0.42)}, 0 8px 24px ${theme.glow}`
-      : `0 5px 18px ${theme.glow}`;
+      : `0 4px 14px ${theme.glow}`;
     card.title = [
       block.name,
       block.room,
@@ -1065,7 +1065,7 @@ function renderScheduleGrid() {
 
     const title = document.createElement("strong");
     title.className =
-      "min-w-0 line-clamp-3 break-words text-[11px] font-semibold leading-[1.3] tracking-[-0.015em] sm:text-[14px] sm:leading-5";
+      "min-w-0 line-clamp-3 break-words text-[13px] font-semibold leading-5 tracking-[-0.015em] text-[var(--foreground)] sm:text-sm";
     title.textContent = block.name || "未命名課程";
 
     titleRow.append(title);
@@ -1073,14 +1073,14 @@ function renderScheduleGrid() {
     if (isNow) {
       const badge = document.createElement("span");
       badge.className =
-        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1.5 py-0.5 text-[8px] font-semibold text-[var(--primary)] sm:px-2 sm:text-[9px]";
+        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-2 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
       badge.textContent = "現在";
       titleRow.append(badge);
     }
 
     const meta = document.createElement("span");
     meta.className =
-      "mt-1 line-clamp-2 break-words text-[9px] font-medium leading-[1.3] text-[var(--muted)] sm:mt-1.5 sm:text-[11px] sm:leading-4";
+      "mt-1 line-clamp-2 break-words text-[10px] font-medium leading-4 text-[var(--muted)] sm:text-[11px]";
     meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
 
     card.append(titleRow);
