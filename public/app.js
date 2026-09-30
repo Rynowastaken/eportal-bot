@@ -781,22 +781,15 @@ function scheduleCourseTheme(course) {
   const usable = [palette[0], palette[1], palette[2]].filter(Boolean);
   const hash = scheduleCourseHash(course);
   const accent = usable[hash % usable.length] || palette[0] || "#f0a8c8";
-  const strength = [0.72, 0.62, 0.52][
-    Math.floor(hash / Math.max(1, usable.length)) % 3
-  ];
 
   return {
     accent,
     background:
-      `linear-gradient(150deg, ${rgba(accent, strength)} 0%, ${rgba(
-        accent,
-        Math.max(0.34, strength - 0.2),
-      )} 100%)`,
-    border: rgba(accent, Math.min(0.92, strength + 0.16)),
-    glow: rgba(accent, 0.18),
+      `linear-gradient(120deg, ${rgba(accent, 0.1)} 0%, rgba(255,255,255,.025) 72%)`,
+    border: rgba(accent, 0.2),
+    glow: rgba(accent, 0.1),
   };
 }
-
 function weeklyScheduleBlocks(periods) {
   const blocks = [];
 
@@ -902,9 +895,11 @@ function renderScheduleGrid() {
 
   const periods = classScheduleData.periods;
   const blocks = weeklyScheduleBlocks(periods);
-  const { dayIndices, periodIndices } = visibleScheduleAxes(periods);
+  const dayIndices = [...new Set(blocks.map((block) => block.dayIndex))].sort(
+    (left, right) => left - right,
+  );
 
-  if (!blocks.length || !dayIndices.length || !periodIndices.length) {
+  if (!blocks.length || !dayIndices.length) {
     setScheduleMessage("目前沒有可顯示的課表資料。");
     return;
   }
@@ -924,169 +919,176 @@ function renderScheduleGrid() {
   const palette = window.NutcTheme?.palette?.() || ["#f0a8c8"];
   const rgba = window.NutcTheme?.rgba || ((color) => color);
   const primary = palette[0] || "#f0a8c8";
-  const dayColumn = new Map(
-    dayIndices.map((dayIndex, compactIndex) => [dayIndex, compactIndex + 2]),
-  );
-  const periodRow = new Map(
-    periodIndices.map((periodIndex, compactIndex) => [
-      periodIndex,
-      compactIndex + 2,
-    ]),
-  );
 
   scheduleGrid.setAttribute("aria-busy", "false");
   scheduleGrid.replaceChildren();
 
-  const grid = document.createElement("div");
-  const fitsWithoutScroll = dayIndices.length <= 5;
-  grid.className =
-    "relative grid w-full overflow-hidden rounded-[18px] bg-[rgba(7,7,9,.42)]";
-  grid.style.gridTemplateColumns = fitsWithoutScroll
-    ? `clamp(56px, 15%, 76px) repeat(${dayIndices.length}, minmax(0, 1fr))`
-    : `64px repeat(${dayIndices.length}, minmax(72px, 1fr))`;
-  grid.style.minWidth = fitsWithoutScroll
-    ? "100%"
-    : `${64 + dayIndices.length * 72}px`;
-  grid.style.gridTemplateRows =
-    `clamp(58px, 13vw, 70px) repeat(${periodIndices.length}, minmax(clamp(68px, 16vw, 82px), auto))`;
-
-  const corner = document.createElement("div");
-  corner.className =
-    "sticky left-0 z-30 border-b border-r border-white/[.14] bg-[rgba(16,13,19,.96)]";
-  corner.style.gridColumn = "1";
-  corner.style.gridRow = "1";
-  grid.append(corner);
+  const board = document.createElement("div");
+  board.className =
+    "grid gap-3 p-3 sm:p-4 xl:grid-cols-2";
 
   dayIndices.forEach((dayIndex) => {
-    const label = dayLabels[dayIndex];
-    const header = document.createElement("div");
+    const dayBlocks = blocks
+      .filter((block) => block.dayIndex === dayIndex)
+      .sort(
+        (left, right) =>
+          left.startPeriodIndex - right.startPeriodIndex,
+      );
     const isToday = dayIndex === today;
-    header.className =
-      "z-20 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.14] px-1 text-center sm:px-2";
-    header.style.gridColumn = String(dayColumn.get(dayIndex));
-    header.style.gridRow = "1";
-    header.style.background = isToday
-      ? `linear-gradient(180deg, ${rgba(primary, 0.18)}, rgba(255,255,255,.045))`
-      : "rgba(255,255,255,.045)";
+
+    const dayCard = document.createElement("section");
+    dayCard.className =
+      "min-w-0 rounded-[16px] border border-white/[.08] bg-white/[.025] p-3 shadow-sm backdrop-blur-[12px] sm:p-3.5";
     if (isToday) {
-      header.style.boxShadow = `inset 0 -3px 0 ${rgba(primary, 0.92)}`;
+      dayCard.style.borderColor = rgba(primary, 0.28);
+      dayCard.style.background =
+        `linear-gradient(145deg, ${rgba(primary, 0.075)} 0%, rgba(255,255,255,.025) 70%)`;
     }
+
+    const header = document.createElement("header");
+    header.className =
+      "mb-3 flex items-center justify-between gap-3 border-b border-white/[.07] pb-2.5";
+
+    const heading = document.createElement("div");
+    heading.className = "min-w-0";
+
+    const headingRow = document.createElement("div");
+    headingRow.className = "flex min-w-0 items-center gap-2";
 
     const day = document.createElement("strong");
     day.className =
-      "text-[14px] font-semibold tracking-[-0.02em] text-[var(--foreground)] sm:text-[17px]";
-    day.textContent = String(label).replace("週", "");
+      "truncate text-sm font-semibold tracking-[-0.02em] text-[var(--foreground)]";
+    day.textContent = dayLabels[dayIndex] || `週${dayIndex + 1}`;
 
-    const date = document.createElement("span");
-    date.className = isToday
-      ? "mt-1 text-[10px] font-semibold text-[var(--primary)] sm:text-xs"
-      : "mt-1 text-[10px] font-medium text-[var(--muted)] sm:text-xs";
-    date.textContent = weekDates[dayIndex] || "";
+    headingRow.append(day);
 
-    header.append(day, date);
-    grid.append(header);
-  });
-
-  periodIndices.forEach((periodIndex) => {
-    const period = periods[periodIndex];
-    const [startTime = "", endTime = ""] = String(period.time || "").split("~");
-
-    const periodLabel = document.createElement("div");
-    periodLabel.className =
-      "sticky left-0 z-30 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.14] bg-[rgba(16,13,19,.96)] px-0.5 text-center sm:px-1";
-    periodLabel.style.gridColumn = "1";
-    periodLabel.style.gridRow = String(periodRow.get(periodIndex));
-
-    const slot = document.createElement("strong");
-    slot.className =
-      "text-base font-semibold leading-none text-[var(--foreground)] sm:text-lg";
-    slot.textContent = period.slot;
-
-    const time = document.createElement("span");
-    time.className =
-      "mt-1.5 text-[9px] font-medium leading-[1.3] text-[var(--muted)] sm:mt-2 sm:text-[10px]";
-    time.textContent = `${startTime}\n│\n${endTime}`;
-    time.style.whiteSpace = "pre-line";
-
-    periodLabel.append(slot, time);
-    grid.append(periodLabel);
-
-    dayIndices.forEach((dayIndex) => {
-      const cell = document.createElement("div");
-      cell.className = "border-b border-r border-white/[.10]";
-      cell.style.gridColumn = String(dayColumn.get(dayIndex));
-      cell.style.gridRow = String(periodRow.get(periodIndex));
-      cell.style.background =
-        dayIndex === today
-          ? rgba(primary, 0.025)
-          : "rgba(255,255,255,.012)";
-      grid.append(cell);
-    });
-  });
-
-  blocks.forEach((block) => {
-    const compactColumn = dayColumn.get(block.dayIndex);
-    const compactStartRow = periodRow.get(block.startPeriodIndex);
-    const compactEndRow = periodRow.get(block.endPeriodIndex);
-
-    if (!compactColumn || !compactStartRow || !compactEndRow) return;
-
-    const theme = scheduleCourseTheme(block);
-    const startMinutes = clockMinutes(block.startTime);
-    const endMinutes = clockMinutes(block.endTime);
-    const isNow =
-      block.dayIndex === today &&
-      startMinutes !== null &&
-      endMinutes !== null &&
-      nowMinutes >= startMinutes &&
-      nowMinutes <= endMinutes;
-
-    const card = document.createElement("article");
-    card.className =
-      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-[8px] border px-1.5 py-2 text-center text-[var(--foreground)] shadow-[0_4px_14px_rgba(0,0,0,.22)] sm:m-[3px] sm:rounded-[9px] sm:px-2 sm:py-2.5";
-    card.style.gridColumn = String(compactColumn);
-    card.style.gridRow = `${compactStartRow} / ${compactEndRow + 1}`;
-    card.style.background = theme.background;
-    card.style.borderColor = theme.border;
-    card.style.boxShadow = isNow
-      ? `0 0 0 2px ${rgba(primary, 0.9)}, 0 8px 24px ${theme.glow}`
-      : `0 6px 20px ${theme.glow}`;
-    card.title = [
-      block.name,
-      block.room,
-      block.teacher,
-      `${block.startTime}–${block.endTime}`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    const title = document.createElement("strong");
-    title.className =
-      "line-clamp-3 break-words text-[11px] font-semibold leading-[1.3] tracking-[-0.015em] sm:text-[14px] sm:leading-5";
-    title.textContent = block.name || "未命名課程";
-
-    const meta = document.createElement("span");
-    meta.className =
-      "mt-1 line-clamp-2 break-words text-[9px] font-semibold leading-[1.25] text-[var(--foreground)] opacity-80 sm:mt-1.5 sm:text-[11px] sm:leading-4";
-    meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
-
-    card.append(title);
-    if (meta.textContent) card.append(meta);
-
-    if (isNow) {
-      const badge = document.createElement("span");
-      badge.className =
-        "mt-1.5 rounded-full border border-white/[.18] bg-black/20 px-1.5 py-0.5 text-[8px] font-semibold tracking-[.02em] sm:mt-2 sm:px-2 sm:text-[9px]";
-      badge.textContent = "現在";
-      card.append(badge);
+    if (isToday) {
+      const todayBadge = document.createElement("span");
+      todayBadge.className =
+        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-2 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
+      todayBadge.textContent = "今天";
+      headingRow.append(todayBadge);
     }
 
-    grid.append(card);
+    const date = document.createElement("p");
+    date.className =
+      "mt-0.5 text-[10px] font-medium text-[var(--faint)]";
+    date.textContent = weekDates[dayIndex] || "";
+
+    heading.append(headingRow, date);
+
+    const count = document.createElement("span");
+    count.className =
+      "shrink-0 rounded-full border border-white/[.08] bg-white/[.035] px-2 py-1 text-[10px] font-semibold text-[var(--muted)]";
+    count.textContent = `${dayBlocks.length} 堂`;
+
+    header.append(heading, count);
+    dayCard.append(header);
+
+    const list = document.createElement("div");
+    list.className = "grid gap-2";
+
+    dayBlocks.forEach((block) => {
+      const theme = scheduleCourseTheme(block);
+      const startMinutes = clockMinutes(block.startTime);
+      const endMinutes = clockMinutes(block.endTime);
+      const isNow =
+        isToday &&
+        startMinutes !== null &&
+        endMinutes !== null &&
+        nowMinutes >= startMinutes &&
+        nowMinutes <= endMinutes;
+
+      const course = document.createElement("article");
+      course.className =
+        "relative overflow-hidden rounded-[14px] border p-3 transition duration-150 hover:-translate-y-px hover:bg-white/[.04]";
+      course.style.borderColor = isNow
+        ? rgba(primary, 0.42)
+        : theme.border;
+      course.style.background = theme.background;
+      course.style.boxShadow = isNow
+        ? `inset 3px 0 0 ${rgba(primary, 0.95)}, 0 8px 24px ${theme.glow}`
+        : `inset 3px 0 0 ${rgba(theme.accent, 0.68)}, 0 4px 14px ${theme.glow}`;
+      course.title = [
+        block.name,
+        block.room,
+        block.teacher,
+        `${block.startTime}–${block.endTime}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const row = document.createElement("div");
+      row.className =
+        "flex min-w-0 items-start gap-3";
+
+      const timeColumn = document.createElement("div");
+      timeColumn.className =
+        "w-[68px] shrink-0 border-r border-white/[.08] pr-3";
+
+      const time = document.createElement("strong");
+      time.className =
+        "block text-[11px] font-semibold tabular-nums leading-4 text-[var(--foreground)]";
+      time.textContent = block.startTime || "—";
+
+      const endTime = document.createElement("span");
+      endTime.className =
+        "block text-[10px] font-medium tabular-nums leading-4 text-[var(--faint)]";
+      endTime.textContent = block.endTime || "";
+
+      const slot = document.createElement("span");
+      slot.className =
+        "mt-1.5 inline-flex rounded-full border border-white/[.08] bg-black/10 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--muted)]";
+      slot.textContent =
+        block.startSlot === block.endSlot
+          ? `第 ${block.startSlot} 節`
+          : `第 ${block.startSlot}–${block.endSlot} 節`;
+
+      timeColumn.append(time);
+      if (endTime.textContent) timeColumn.append(endTime);
+      timeColumn.append(slot);
+
+      const content = document.createElement("div");
+      content.className = "min-w-0 flex-1";
+
+      const titleRow = document.createElement("div");
+      titleRow.className =
+        "flex min-w-0 items-start justify-between gap-2";
+
+      const title = document.createElement("strong");
+      title.className =
+        "min-w-0 break-words text-[13px] font-semibold leading-5 tracking-[-0.015em] text-[var(--foreground)] sm:text-sm";
+      title.textContent = block.name || "未命名課程";
+
+      titleRow.append(title);
+
+      if (isNow) {
+        const badge = document.createElement("span");
+        badge.className =
+          "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-2 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
+        badge.textContent = "現在";
+        titleRow.append(badge);
+      }
+
+      const meta = document.createElement("p");
+      meta.className =
+        "mt-1 text-[10px] font-medium leading-4 text-[var(--muted)] sm:text-[11px]";
+      meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
+
+      content.append(titleRow);
+      if (meta.textContent) content.append(meta);
+
+      row.append(timeColumn, content);
+      course.append(row);
+      list.append(course);
+    });
+
+    dayCard.append(list);
+    board.append(dayCard);
   });
 
-  scheduleGrid.append(grid);
+  scheduleGrid.append(board);
 }
-
 function updateScheduleMeta(data) {
   if (!scheduleMeta) return;
 
