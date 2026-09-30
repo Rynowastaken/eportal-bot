@@ -98,7 +98,7 @@ async function fetchFreshSchedule() {
           day > 7 ||
           !Number.isInteger(period) ||
           period < 1 ||
-          period > CLASS_SCHEDULE_TIME_SLOTS.length
+          period > 13
         ) {
           continue;
         }
