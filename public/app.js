@@ -67,6 +67,9 @@ const backgroundUploadApply = document.querySelector("#backgroundUploadApply");
 const debugRestartServer = document.querySelector("#debugRestartServer");
 const debugRestartStatus = document.querySelector("#debugRestartStatus");
 const debugRestartIcon = document.querySelector("#debugRestartIcon");
+const debugUpdateServer = document.querySelector("#debugUpdateServer");
+const debugUpdateStatus = document.querySelector("#debugUpdateStatus");
+const debugUpdateIcon = document.querySelector("#debugUpdateIcon");
 
 let modulesCache = [];
 let stagedThemeSettings = null;
@@ -1991,6 +1994,65 @@ debugRestartServer.addEventListener("click", async () => {
   }
 });
 
+debugUpdateServer.addEventListener("click", async () => {
+  if (debugUpdateServer.disabled) return;
+
+  debugUpdateServer.disabled = true;
+  debugRestartServer.disabled = true;
+  debugUpdateIcon.classList.add("animate-spin");
+  debugUpdateStatus.textContent = "正在檢查最新 GitHub Release…";
+  debugUpdateStatus.classList.remove("text-[#f4a0a5]");
+  debugUpdateStatus.classList.add("text-[var(--muted)]");
+
+  try {
+    const before = await api("/api/server/status");
+    const response = await fetch("/api/debug/update", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || `Update failed (${response.status})`,
+      );
+    }
+
+    if (!data.updated) {
+      debugUpdateStatus.textContent =
+        `已是最新版本：${data.release?.name || data.release?.tag || "latest"}`;
+      debugUpdateServer.disabled = false;
+      debugRestartServer.disabled = false;
+      debugUpdateIcon.classList.remove("animate-spin");
+      return;
+    }
+
+    debugUpdateStatus.textContent =
+      `已更新到 ${data.release?.name || data.release?.tag || "latest"}，正在重新啟動…`;
+
+    const restarted = await waitForServerRestart(before.instanceId);
+
+    if (!restarted) {
+      throw new Error("更新完成，但 Server 沒有在 15 秒內重新上線。");
+    }
+
+    debugUpdateStatus.textContent = "更新完成，正在重新載入…";
+    await motion?.emphasize?.(debugUpdateServer, {
+      duration: 180,
+    });
+    window.location.reload();
+  } catch (error) {
+    debugUpdateServer.disabled = false;
+    debugRestartServer.disabled = false;
+    debugUpdateIcon.classList.remove("animate-spin");
+    debugUpdateStatus.textContent =
+      "更新失敗：" + (error?.message || String(error));
+    debugUpdateStatus.classList.remove("text-[var(--muted)]");
+    debugUpdateStatus.classList.add("text-[#f4a0a5]");
+  }
+});
 serverLogoutAction.addEventListener("click", async () => {
   if (serverLogoutAction.disabled) return;
 
