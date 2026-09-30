@@ -272,25 +272,27 @@
             id="classScheduleCard"
             class="overflow-hidden rounded-[20px] border border-white/[.10] bg-[rgba(12,10,14,.30)] shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
           >
-            <div
-              id="scheduleGrid"
-              class="min-h-[180px] w-full"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              <div class="flex min-h-[180px] items-center justify-center gap-3 px-4 text-sm font-medium text-[var(--muted)]">
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4 animate-spin"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  aria-hidden="true"
-                >
-                  <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-                </svg>
-                <span>登入狀態確認後載入 AIS 課表</span>
+            <div class="overflow-x-auto overscroll-x-contain">
+              <div
+                id="scheduleGrid"
+                class="w-full"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <div class="flex min-h-[180px] items-center justify-center gap-3 px-4 text-sm font-medium text-[var(--muted)]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    class="h-4 w-4 animate-spin"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                  </svg>
+                  <span>登入狀態確認後載入 AIS 課表</span>
+                </div>
               </div>
             </div>
           </div>
@@ -797,6 +799,6 @@
 
     <script src="/theme.js?v=4"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=44" type="module"></script>
+    <script src="/app.js?v=45" type="module"></script>
   </body>
 </html>
