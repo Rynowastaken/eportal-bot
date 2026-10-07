@@ -27,6 +27,15 @@ const statusButtonStyle = document.createElement("style");
 statusButtonStyle.textContent = `
   #serverStatusButton[data-status-expanded="false"] {
     border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  #serverStatusButton[data-status-expanded="false"]:hover {
+    border-color: transparent;
+    background: transparent;
   }
 `;
 document.head.append(statusButtonStyle);
