@@ -5,9 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <script src="/tailwind-config.js?v=2"></script>
+    <script src="/tailwind-config.js?v=3"></script>
     <script src="/vendor/tailwindcss-3.4.17.js"></script>
     <script src="/vendor/lucide-1.24.0.min.js"></script>
+    <style>
+      #serverStatusButton[data-status-expanded="false"] {
+        height: 1.75rem;
+        min-width: 1.75rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      #serverStatusButton[data-status-expanded="false"]:hover,
+      #serverStatusButton[data-status-expanded="false"]:focus-visible {
+        border-color: transparent;
+        background: transparent;
+        box-shadow: none;
+      }
+    </style>
   </head>
   <body
     class="min-h-screen overflow-x-hidden bg-[#141018] font-sans text-[var(--foreground)] antialiased"
