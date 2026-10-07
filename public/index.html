@@ -5,13 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
-    <script src="/tailwind-config.js?v=3"></script>
+    <script src="/tailwind-config.js?v=4"></script>
     <script src="/vendor/tailwindcss-3.4.17.js"></script>
     <script src="/vendor/lucide-1.24.0.min.js"></script>
     <style>
+      /*
+       * Keep the collapsed status control on the same 42px layout grid as the
+       * settings button. Only its outer chrome disappears; geometry does not.
+       */
       #serverStatusButton[data-status-expanded="false"] {
-        height: 1.75rem;
-        min-width: 1.75rem;
+        width: 42px;
+        min-width: 42px;
+        height: 42px;
         padding: 0;
         border: 0;
         background: transparent;
@@ -25,6 +30,22 @@
         border-color: transparent;
         background: transparent;
         box-shadow: none;
+      }
+
+      /*
+       * In collapsed mode the status icon becomes the single visible 42px
+       * control, matching the neighboring settings button. Expanded mode
+       * falls back to the normal 28px icon inside the status pill.
+       */
+      #serverStatusButton[data-status-expanded="false"] #serverStatusIcon {
+        width: 42px;
+        height: 42px;
+        border-radius: 0.75rem;
+      }
+
+      #serverStatusButton[data-status-expanded="false"] #serverStatusIcon svg {
+        width: 1.25rem;
+        height: 1.25rem;
       }
     </style>
   </head>
