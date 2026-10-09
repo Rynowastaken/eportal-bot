@@ -146,7 +146,7 @@ export function resolveCalendarDay(date, nationalDay, academicCalendar, program 
   return { date, label: "", noClass: false, kind: "normal", source: null };
 }
 
-export async function getWeekCalendar(now = new Date()) {
+export async function getWeekCalendar(now = new Date(), program = "day") {
   const dates = taipeiWeekDateKeys(now);
   const years = [...new Set(dates.map((date) => Number(date.slice(0, 4))))];
   const nationalResults = await Promise.all(years.map((year) => nationalYear(year)));
@@ -159,10 +159,9 @@ export async function getWeekCalendar(now = new Date()) {
     console.warn("[calendar] NUTC overrides unavailable:", error?.message || error);
   }
 
-  const configuredProgram = String(process.env.EPORTAL_ACADEMIC_PROGRAM || "day").toLowerCase();
-  const program = ["day", "evening", "weekend"].includes(configuredProgram)
-    ? configuredProgram
-    : "day";
+  if (!["day", "evening", "weekend"].includes(program)) {
+    throw new TypeError("Invalid academic program.");
+  }
   const days = dates.map((date) => {
     const national = nationalByYear.get(Number(date.slice(0, 4)))?.dates.get(date);
     return resolveCalendarDay(date, national, academicCalendar, program);
