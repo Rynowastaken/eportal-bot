@@ -757,7 +757,7 @@ const server = http.createServer(async (req, res) => {
         );
         const [schedule, calendar] = await Promise.all([
           getClassSchedule({ force }),
-          getWeekCalendar(),
+          getWeekCalendar(new Date(), dashboardPreferenceStore.get().academicProgram),
         ]);
         sendJson(res, 200, { ...schedule, calendar });
       } catch (error) {
@@ -912,6 +912,17 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/preferences") {
       sendJson(res, 200, dashboardPreferenceStore.get());
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname === "/api/preferences/academic-program"
+    ) {
+      const body = await readJsonBody(req);
+      const saved = await dashboardPreferenceStore.setAcademicProgram(body.academicProgram);
+      const calendar = await getWeekCalendar(new Date(), saved.academicProgram);
+      sendJson(res, 200, { ok: true, ...saved, calendar });
       return;
     }
 
