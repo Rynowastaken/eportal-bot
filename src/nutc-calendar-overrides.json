@@ -1,0 +1,105 @@
+{
+  "academicYear": "115",
+  "sourceUrl": "https://aca.nutc.edu.tw/p/406-1015-134115,r320.php?Lang=zh-tw",
+  "note": "NUTC academic-calendar exceptions, manually verified against the official 115學年度 PDF (June 30, 2026). Programs: day (日間部), evening (進修部夜間班), weekend (進修部假日班). Entries apply only to their listed programs. Generic weekends are not class holidays.",
+  "days": [
+    {
+      "date": "2026-09-26",
+      "label": "假日班照常上課",
+      "noClass": false,
+      "programs": [
+        "weekend"
+      ]
+    },
+    {
+      "date": "2026-09-27",
+      "label": "假日班照常上課",
+      "noClass": false,
+      "programs": [
+        "weekend"
+      ]
+    },
+    {
+      "date": "2026-10-11",
+      "label": "假日班照常上課",
+      "noClass": false,
+      "programs": [
+        "weekend"
+      ]
+    },
+    {
+      "date": "2026-10-24",
+      "label": "假日班照常上課",
+      "noClass": false,
+      "programs": [
+        "weekend"
+      ]
+    },
+    {
+      "date": "2026-12-01",
+      "label": "校慶（照常上課）",
+      "noClass": false,
+      "programs": [
+        "day",
+        "evening",
+        "weekend"
+      ]
+    },
+    {
+      "date": "2027-04-02",
+      "label": "校慶補假",
+      "noClass": true,
+      "programs": [
+        "day",
+        "evening",
+        "weekend"
+      ]
+    },
+    {
+      "date": "2027-04-03",
+      "label": "假日班照常上課",
+      "noClass": false,
+      "programs": [
+        "weekend"
+      ]
+    },
+    {
+      "date": "2027-04-24",
+      "label": "統一入學測驗（停課）",
+      "noClass": true,
+      "programs": [
+        "evening",
+        "weekend"
+      ]
+    },
+    {
+      "date": "2027-04-25",
+      "label": "統一入學測驗（停課）",
+      "noClass": true,
+      "programs": [
+        "weekend"
+      ]
+    }
+  ],
+  "ranges": [
+    {
+      "start": "2027-01-11",
+      "end": "2027-02-21",
+      "label": "寒假",
+      "noClass": true,
+      "programs": [
+        "day",
+        "evening"
+      ]
+    },
+    {
+      "start": "2027-01-11",
+      "end": "2027-02-26",
+      "label": "寒假",
+      "noClass": true,
+      "programs": [
+        "weekend"
+      ]
+    }
+  ]
+}
