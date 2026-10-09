@@ -146,6 +146,7 @@ Cloudflare 那邊的 DNS、Access Application、Origin CA 憑證還是要自己�
 | `npm start` | 啟動 Dashboard |
 | `npm run doctor` | 檢查執行環境是否就緒 |
 | `npm run check` | 檢查所有 JS 語法 |
+| `npm test` | 檢查假日與校曆邏輯 |
 | `npm run install-browser` | 安裝 Playwright Chromium 及系統套件 |
 | `npm run portal:status` | 查看 ePortal 登入狀態 |
 | `npm run login` | 用有 GUI 的 Playwright 手動登入（備用方案） |
@@ -163,9 +164,21 @@ Cloudflare 那邊的 DNS、Access Application、Origin CA 憑證還是要自己�
 | `EPORTAL_KEEPALIVE_MINUTES` | `10` | 自動檢查 session 的間隔（分鐘），設 0 關閉 |
 | `EPORTAL_LOGIN_BRIDGE_TTL_MINUTES` | `15` | Login Bridge 的有效時間 |
 | `EPORTAL_RESTART_MODE` | `self` | 用 systemd 管理時設 `exit`；重新啟動請求會以非零狀態退出，讓 `Restart=on-failure` 接手啟動新程序 |
+| `EPORTAL_ACADEMIC_PROGRAM` | `day` | 假日／校曆適用學制：`day`、`evening`、`weekend` |
 | `CLOUDFLARE_ACCESS_ENFORCE` | — | 設 `1` 啟用 origin JWT 驗證 |
 | `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | — | Cloudflare Access team domain |
 | `CLOUDFLARE_ACCESS_AUD` | — | Cloudflare Access Application AUD |
+
+## 課表假日與補課
+
+課表維持原本的每週時間格視圖，並標示本週假日／停課日。一般課程資料仍來自 NUTC AIS。已確認停課日的課程會變淡，但保留原課表供參考；**不會自動新增調課後的課程**。
+
+- 國定假日：伺服器按年份讀取 [中華民國政府行政機關辦公日曆表](https://data.gov.tw/dataset/14718) 的 [TaiwanCalendar JSON](https://github.com/ruyut/TaiwanCalendar)，快取 24 小時；CDN 無法連線時改用舊快取，沒有快取則只套用校曆例外並顯示提示。
+- 校曆例外：`src/nutc-calendar-overrides.json` 依 [中科大 115 學年度行事曆](https://aca.nutc.edu.tw/p/412-1015-4596.php) 手動整理；請在學校公布新版行事曆或調課公告後更新此檔案。明確的單日例外優先於國定假日；一般週六日不會自動被視為停課日。
+- 學制：設定 `EPORTAL_ACADEMIC_PROGRAM=day`（預設／日間部）、`evening`（進修部夜間班）或 `weekend`（進修部假日班）。校曆各學制的上課日／停課日不同，請依自己的學制設定；修改環境變數後須重啟服務。
+- 校曆資料結構：`days` 可填 `{ "date": "2027-04-02", "label": "校慶補假", "noClass": true, "programs": ["day", "evening", "weekend"] }`，`ranges` 可填 `{ "start": "2027-01-11", "end": "2027-02-21", "label": "寒假", "noClass": true, "programs": ["day"] }`。需要覆寫國定假日的照常上課日，將 `noClass` 設為 `false` 即可。
+
+可執行 `npm test` 檢查假日來源優先序、時區與校曆例外。
 
 ## 資料與隱私
 
