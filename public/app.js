@@ -53,6 +53,8 @@ const themeBrightness = document.querySelector("#themeBrightness");
 const themeBrightnessValue = document.querySelector("#themeBrightnessValue");
 const themeReset = document.querySelector("#themeReset");
 const themeApply = document.querySelector("#themeApply");
+const academicProgramSelect = document.querySelector("#academicProgramSelect");
+const academicProgramStatus = document.querySelector("#academicProgramStatus");
 const backgroundUploadDialog = document.querySelector("#backgroundUploadDialog");
 const backgroundUploadClose = document.querySelector("#backgroundUploadClose");
 const backgroundDropzone = document.querySelector("#backgroundDropzone");
@@ -79,6 +81,7 @@ let initialModulesAnimated = false;
 let statusPointerInside = false;
 let statusFocusInside = false;
 let classScheduleData = null;
+let currentAcademicProgram = "day";
 let absenceListData = null;
 
 const accountNameKey = "nutc-portal-account-name-v1";
@@ -172,6 +175,9 @@ async function saveServerAccountProfile({
 async function loadServerAccountProfile() {
   try {
     const preferences = await api("/api/preferences");
+    currentAcademicProgram = ["day", "evening", "weekend"].includes(
+      preferences.academicProgram,
+    ) ? preferences.academicProgram : "day";
     let account = preferences.account || {
       initialized: false,
       username: "User",
@@ -465,6 +471,10 @@ async function openThemeDialog() {
   stagedThemeSettings = {
     ...window.NutcTheme.settings(),
   };
+  academicProgramSelect.value = currentAcademicProgram;
+  academicProgramStatus.textContent = "";
+  academicProgramStatus.classList.remove("text-[#f4a0a5]");
+  academicProgramStatus.classList.add("text-[var(--muted)]");
   renderThemeSchemes();
   renderThemePreview({ animate: true });
   renderIcons();
@@ -1832,11 +1842,45 @@ themeReset.addEventListener("click", () => {
 });
 
 themeApply.addEventListener("click", async () => {
-  if (!stagedThemeSettings) return;
+  if (!stagedThemeSettings || themeApply.disabled) return;
 
-  window.NutcTheme.applySettings(stagedThemeSettings);
-  syncThemeMenu();
-  await closeThemeDialog();
+  themeApply.disabled = true;
+  academicProgramSelect.disabled = true;
+  academicProgramStatus.textContent = "";
+  try {
+    if (academicProgramSelect.value !== currentAcademicProgram) {
+      const response = await fetch("/api/preferences/academic-program", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ academicProgram: academicProgramSelect.value }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `儲存學制失敗（${response.status}）`);
+      }
+
+      currentAcademicProgram = data.academicProgram;
+      if (classScheduleData && data.calendar) {
+        classScheduleData.calendar = data.calendar;
+        renderScheduleGrid();
+        updateScheduleMeta(classScheduleData);
+      }
+    }
+
+    window.NutcTheme.applySettings(stagedThemeSettings);
+    syncThemeMenu();
+    await closeThemeDialog();
+  } catch (error) {
+    academicProgramStatus.textContent =
+      "設定儲存失敗：" + (error?.message || String(error));
+    academicProgramStatus.classList.remove("text-[var(--muted)]");
+    academicProgramStatus.classList.add("text-[#f4a0a5]");
+  } finally {
+    themeApply.disabled = false;
+    academicProgramSelect.disabled = false;
+  }
 });
 
 backgroundAction.addEventListener("click", () => {
