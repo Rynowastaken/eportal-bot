@@ -54,6 +54,10 @@ const themeBrightnessValue = document.querySelector("#themeBrightnessValue");
 const themeReset = document.querySelector("#themeReset");
 const themeApply = document.querySelector("#themeApply");
 const academicProgramSelect = document.querySelector("#academicProgramSelect");
+const academicProgramDropdown = document.querySelector("#academicProgramDropdown");
+const academicProgramOptions = document.querySelector("#academicProgramOptions");
+const academicProgramValue = document.querySelector("#academicProgramValue");
+const academicProgramChevron = document.querySelector("#academicProgramChevron");
 const academicProgramStatus = document.querySelector("#academicProgramStatus");
 const backgroundUploadDialog = document.querySelector("#backgroundUploadDialog");
 const backgroundUploadClose = document.querySelector("#backgroundUploadClose");
@@ -82,6 +86,7 @@ let statusPointerInside = false;
 let statusFocusInside = false;
 let classScheduleData = null;
 let currentAcademicProgram = "day";
+let stagedAcademicProgram = "day";
 let absenceListData = null;
 
 const accountNameKey = "nutc-portal-account-name-v1";
@@ -467,11 +472,108 @@ function renderThemeSchemes() {
   }
 }
 
+const academicProgramLabels = {
+  day: "日間部",
+  evening: "進修部夜間班",
+  weekend: "進修部假日班",
+};
+const academicProgramChoices = Array.from(
+  academicProgramOptions.querySelectorAll("[data-academic-program]"),
+);
+
+function setAcademicProgramSelection(program) {
+  if (!Object.hasOwn(academicProgramLabels, program)) return;
+  stagedAcademicProgram = program;
+  academicProgramValue.textContent = academicProgramLabels[program];
+
+  academicProgramChoices.forEach((choice) => {
+    const selected = choice.dataset.academicProgram === program;
+    choice.setAttribute("aria-selected", String(selected));
+    choice.classList.toggle("bg-[var(--primary-soft)]", selected);
+    choice.classList.toggle("border-[var(--primary-ring)]", selected);
+    choice.classList.toggle("font-semibold", selected);
+    choice.querySelector("[data-academic-check]")?.classList.toggle(
+      "opacity-0", !selected,
+    );
+  });
+}
+
+function setAcademicProgramMenuOpen(open, { focusSelected = false, returnFocus = false } = {}) {
+  const visible = Boolean(open && !academicProgramSelect.disabled && themeDialog.open);
+  academicProgramOptions.classList.toggle("hidden", !visible);
+  academicProgramSelect.setAttribute("aria-expanded", String(visible));
+  academicProgramChevron.classList.toggle("rotate-180", visible);
+
+  if (visible && focusSelected) {
+    const selected = academicProgramChoices.find(
+      (choice) => choice.dataset.academicProgram === stagedAcademicProgram,
+    );
+    selected?.focus();
+  } else if (!visible && returnFocus) {
+    academicProgramSelect.focus();
+  }
+}
+
+function moveAcademicProgramFocus(key, startingIndex) {
+  let targetIndex = startingIndex;
+  if (key === "Home") targetIndex = 0;
+  if (key === "End") targetIndex = academicProgramChoices.length - 1;
+  if (key === "ArrowDown") targetIndex = (startingIndex + 1) % academicProgramChoices.length;
+  if (key === "ArrowUp") targetIndex =
+    (startingIndex - 1 + academicProgramChoices.length) % academicProgramChoices.length;
+  setAcademicProgramMenuOpen(true);
+  academicProgramChoices[targetIndex]?.focus();
+}
+
+academicProgramSelect.addEventListener("click", () => {
+  const wasOpen = academicProgramSelect.getAttribute("aria-expanded") === "true";
+  setAcademicProgramMenuOpen(!wasOpen, { focusSelected: !wasOpen });
+});
+
+academicProgramSelect.addEventListener("keydown", (event) => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const selectedIndex = academicProgramChoices.findIndex(
+    (choice) => choice.dataset.academicProgram === stagedAcademicProgram,
+  );
+  moveAcademicProgramFocus(event.key, selectedIndex);
+});
+
+academicProgramChoices.forEach((choice, index) => {
+  choice.addEventListener("click", () => {
+    setAcademicProgramSelection(choice.dataset.academicProgram);
+    setAcademicProgramMenuOpen(false, { returnFocus: true });
+  });
+  choice.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setAcademicProgramMenuOpen(false, { returnFocus: true });
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      moveAcademicProgramFocus(event.key, index);
+    } else if (event.key === "Tab") {
+      setAcademicProgramMenuOpen(false);
+    }
+  });
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (!academicProgramDropdown.contains(event.target)) {
+    setAcademicProgramMenuOpen(false);
+  }
+});
+
+themeDialog.addEventListener("close", () => {
+  setAcademicProgramMenuOpen(false);
+});
+
 async function openThemeDialog() {
   stagedThemeSettings = {
     ...window.NutcTheme.settings(),
   };
-  academicProgramSelect.value = currentAcademicProgram;
+  setAcademicProgramSelection(currentAcademicProgram);
+  setAcademicProgramMenuOpen(false);
   academicProgramStatus.textContent = "";
   academicProgramStatus.classList.remove("text-[#f4a0a5]");
   academicProgramStatus.classList.add("text-[var(--muted)]");
@@ -1844,17 +1946,18 @@ themeReset.addEventListener("click", () => {
 themeApply.addEventListener("click", async () => {
   if (!stagedThemeSettings || themeApply.disabled) return;
 
+  setAcademicProgramMenuOpen(false);
   themeApply.disabled = true;
   academicProgramSelect.disabled = true;
   academicProgramStatus.textContent = "";
   try {
-    if (academicProgramSelect.value !== currentAcademicProgram) {
+    if (stagedAcademicProgram !== currentAcademicProgram) {
       const response = await fetch("/api/preferences/academic-program", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ academicProgram: academicProgramSelect.value }),
+        body: JSON.stringify({ academicProgram: stagedAcademicProgram }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
