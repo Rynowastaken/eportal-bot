@@ -7,6 +7,10 @@ import {
   resolveCalendarDay,
   taipeiWeekDateKeys,
 } from "../src/holiday-calendar.js";
+import {
+  DashboardPreferenceStore,
+  validateAcademicProgram,
+} from "../src/dashboard-preferences.js";
 
 const nutc = JSON.parse(
   await readFile(new URL("../src/nutc-calendar-overrides.json", import.meta.url), "utf8"),
@@ -95,4 +99,24 @@ test("missing national feed falls back to school exceptions without false public
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("academic program preference validates, persists, and is exposed to clients", async () => {
+  const store = new DashboardPreferenceStore();
+  const persisted = [];
+  store.persist = async () => {
+    persisted.push(store.get().academicProgram);
+  };
+
+  assert.equal(store.get().academicProgram, "day");
+  assert.equal(await store.setAcademicProgram("weekend").then((value) => value.academicProgram), "weekend");
+  assert.equal((await store.setAcademicProgram("evening")).academicProgram, "evening");
+  assert.deepEqual(persisted, ["weekend", "evening"]);
+  assert.equal(validateAcademicProgram("day"), "day");
+
+  for (const invalid of ["", "normal", "DAY", null, 1, {}]) {
+    assert.throws(() => validateAcademicProgram(invalid), { statusCode: 400 });
+    await assert.rejects(store.setAcademicProgram(invalid), { statusCode: 400 });
+  }
+  assert.equal(store.get().academicProgram, "evening");
 });
