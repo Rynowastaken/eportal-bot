@@ -635,6 +635,33 @@
 
         <div class="mt-6 border-t border-white/[.10] pt-5">
           <div class="flex items-center gap-2">
+            <i data-lucide="calendar-days" class="h-4 w-4 text-[var(--primary)]"></i>
+            <h3 class="text-sm font-semibold">課表設定</h3>
+          </div>
+          <label for="academicProgramSelect" class="mt-3 block text-sm font-semibold">
+            學制
+          </label>
+          <select
+            id="academicProgramSelect"
+            class="mt-2 min-h-[46px] w-full rounded-xl border border-white/[.12] bg-[#211b27] px-3 text-sm font-semibold text-[var(--foreground)] outline-none transition focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary-ring)] disabled:opacity-50"
+          >
+            <option value="day">日間部</option>
+            <option value="evening">進修部夜間班</option>
+            <option value="weekend">進修部假日班</option>
+          </select>
+          <p class="mt-2 text-xs font-medium leading-5 text-[var(--muted)]">
+            影響國定假日與校曆停課標示。按 Apply 儲存，課表會立即更新；所有裝置共用此設定。
+          </p>
+          <p
+            id="academicProgramStatus"
+            class="mt-1 min-h-5 text-xs font-medium text-[var(--muted)]"
+            role="status"
+            aria-live="polite"
+          ></p>
+        </div>
+
+        <div class="mt-6 border-t border-white/[.10] pt-5">
+          <div class="flex items-center gap-2">
             <i data-lucide="bug" class="h-4 w-4 text-[var(--primary)]"></i>
             <h3 class="text-sm font-semibold">Debug</h3>
           </div>
@@ -839,6 +866,6 @@
 
     <script src="/theme.js?v=4"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=49" type="module"></script>
+    <script src="/app.js?v=50" type="module"></script>
   </body>
 </html>
