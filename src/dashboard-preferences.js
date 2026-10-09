@@ -15,6 +15,16 @@ const IMAGE_LIMITS = {
   background: 6 * 1024 * 1024,
 };
 
+export function validateAcademicProgram(value) {
+  if (typeof value !== "string" || !["day", "evening", "weekend"].includes(value)) {
+    throw Object.assign(
+      new Error("Academic program must be day, evening, or weekend."),
+      { statusCode: 400 },
+    );
+  }
+  return value;
+}
+
 function cleanUsername(value) {
   const username = typeof value === "string" ? value.trim() : "";
   if (!username || username.length > 40) {
@@ -76,6 +86,7 @@ export class DashboardPreferenceStore {
   constructor() {
     this.value = {
       version: 1,
+      academicProgram: "day",
       account: {
         initialized: false,
         username: "User",
@@ -101,6 +112,9 @@ export class DashboardPreferenceStore {
       const parsed = JSON.parse(await fs.readFile(META_FILE, "utf8"));
       this.value = {
         version: 1,
+        academicProgram: ["day", "evening", "weekend"].includes(parsed?.academicProgram)
+          ? parsed.academicProgram
+          : "day",
         account: {
           initialized: Boolean(parsed?.account?.initialized),
           username:
@@ -159,6 +173,7 @@ export class DashboardPreferenceStore {
     const background = this.value.appearance.background;
 
     return {
+      academicProgram: this.value.academicProgram,
       account: {
         initialized: this.value.account.initialized,
         username: this.value.account.username,
@@ -191,6 +206,17 @@ export class DashboardPreferenceStore {
     const pending = this.writeQueue.then(task, task);
     this.writeQueue = pending.catch(() => {});
     return pending;
+  }
+
+  async setAcademicProgram(program) {
+    const validated = validateAcademicProgram(program);
+    return this.enqueue(async () => {
+      if (this.value.academicProgram === validated) return this.get();
+      this.value.academicProgram = validated;
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
   }
 
   async setAccount(payload = {}) {
