@@ -916,6 +916,15 @@ function renderScheduleGrid() {
     "週日",
   ];
   const weekDates = taipeiWeekDates();
+  const calendarDays = Array.isArray(classScheduleData.calendar?.days)
+    ? classScheduleData.calendar.days
+    : [];
+  const calendarForDay = (dayIndex) => {
+    const info = calendarDays[dayIndex];
+    return info?.date?.slice(5).replace("-", "/") === weekDates[dayIndex]
+      ? info
+      : null;
+  };
   const today = taipeiDayIndex();
   const nowMinutes = taipeiMinutesNow();
   const palette = window.NutcTheme?.palette?.() || ["#f0a8c8"];
@@ -944,8 +953,9 @@ function renderScheduleGrid() {
   grid.style.minWidth = fitsWithoutScroll
     ? "100%"
     : `${64 + dayIndices.length * 72}px`;
+  const hasCalendarLabels = dayIndices.some((dayIndex) => calendarForDay(dayIndex)?.label);
   grid.style.gridTemplateRows =
-    `clamp(58px, 13vw, 70px) repeat(${periodIndices.length}, minmax(clamp(68px, 16vw, 82px), auto))`;
+    `${hasCalendarLabels ? "minmax(78px, auto)" : "clamp(58px, 13vw, 70px)"} repeat(${periodIndices.length}, minmax(clamp(68px, 16vw, 82px), auto))`;
 
   const corner = document.createElement("div");
   corner.className =
@@ -958,8 +968,9 @@ function renderScheduleGrid() {
     const label = dayLabels[dayIndex];
     const header = document.createElement("div");
     const isToday = dayIndex === today;
+    const calendarInfo = calendarForDay(dayIndex);
     header.className =
-      "z-20 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.08] px-1 text-center sm:px-2";
+      "z-20 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.08] px-1 py-2 text-center sm:px-2";
     header.style.gridColumn = String(dayColumn.get(dayIndex));
     header.style.gridRow = "1";
     header.style.background = isToday
@@ -981,6 +992,17 @@ function renderScheduleGrid() {
     date.textContent = weekDates[dayIndex] || "";
 
     header.append(day, date);
+    if (calendarInfo?.label) {
+      const notice = document.createElement("span");
+      notice.className = calendarInfo.noClass
+        ? "mt-1 max-w-full truncate rounded-full border border-[#f4a0a5]/25 bg-[#f07178]/[.10] px-1.5 py-0.5 text-[9px] font-semibold text-[#f4a0a5]"
+        : "mt-1 max-w-full truncate rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
+      notice.textContent = calendarInfo.noClass
+        ? `${calendarInfo.label} · 停課`
+        : calendarInfo.label;
+      notice.title = `${calendarInfo.label}（${calendarInfo.source === "NUTC" ? "中科大行事曆" : "政府辦公日曆"}）`;
+      header.append(notice);
+    }
     grid.append(header);
   });
 
@@ -1013,8 +1035,9 @@ function renderScheduleGrid() {
       cell.className = "border-b border-r border-white/[.08]";
       cell.style.gridColumn = String(dayColumn.get(dayIndex));
       cell.style.gridRow = String(periodRow.get(periodIndex));
-      cell.style.background =
-        dayIndex === today
+      cell.style.background = calendarForDay(dayIndex)?.noClass
+        ? rgba(primary, 0.045)
+        : dayIndex === today
           ? rgba(primary, 0.018)
           : "rgba(255,255,255,.012)";
       grid.append(cell);
@@ -1029,9 +1052,11 @@ function renderScheduleGrid() {
     if (!compactColumn || !compactStartRow || !compactEndRow) return;
 
     const theme = scheduleCourseTheme(block);
+    const calendarInfo = calendarForDay(block.dayIndex);
     const startMinutes = clockMinutes(block.startTime);
     const endMinutes = clockMinutes(block.endTime);
     const isNow =
+      !calendarInfo?.noClass &&
       block.dayIndex === today &&
       startMinutes !== null &&
       endMinutes !== null &&
@@ -1055,9 +1080,15 @@ function renderScheduleGrid() {
       block.room,
       block.teacher,
       `${block.startTime}–${block.endTime}`,
+      calendarInfo?.noClass ? `${calendarInfo.label}：依行事曆停課（原課表）` : "",
     ]
       .filter(Boolean)
       .join(" · ");
+    if (calendarInfo?.noClass) {
+      card.style.opacity = "0.45";
+      card.style.filter = "saturate(0.55)";
+      card.setAttribute("aria-label", card.title);
+    }
 
     const titleRow = document.createElement("div");
     titleRow.className =
@@ -1110,9 +1141,17 @@ function updateScheduleMeta(data) {
   if (data?.termLabel) parts.push(data.termLabel);
   parts.push(data?.stale ? "顯示快取" : "NUTC AIS");
   if (fetched) parts.push(`更新 ${fetched}`);
+  if (data?.calendar?.nationalStatus === "unavailable") {
+    parts.push("國定假日資料暫不可用");
+  } else if (data?.calendar?.nationalStatus === "stale") {
+    parts.push("使用假日資料快取");
+  }
 
   scheduleMeta.textContent = parts.join(" · ");
-  scheduleMeta.title = data?.refreshError || "";
+  scheduleMeta.title = [
+    data?.refreshError,
+    data?.calendar?.academicSource && "假日：行政院人事總處／中科大 115 學年度行事曆",
+  ].filter(Boolean).join(" · ");
 }
 
 async function loadClassSchedule({ force = false } = {}) {
