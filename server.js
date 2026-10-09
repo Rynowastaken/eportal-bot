@@ -15,6 +15,7 @@ import {
   clearClassScheduleCache,
   getClassSchedule,
 } from "./src/class-schedule.js";
+import { getWeekCalendar } from "./src/holiday-calendar.js";
 import {
   clearAbsenceListCache,
   getAbsenceList,
@@ -754,7 +755,11 @@ const server = http.createServer(async (req, res) => {
         const force = /^(1|true|yes)$/i.test(
           String(url.searchParams.get("refresh") || ""),
         );
-        sendJson(res, 200, await getClassSchedule({ force }));
+        const [schedule, calendar] = await Promise.all([
+          getClassSchedule({ force }),
+          getWeekCalendar(),
+        ]);
+        sendJson(res, 200, { ...schedule, calendar });
       } catch (error) {
         const status =
           error?.statusCode ||
